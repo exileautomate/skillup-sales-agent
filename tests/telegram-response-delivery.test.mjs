@@ -6,6 +6,14 @@ import { processAndDeliverTelegramResponse } from "../src/lib/telegram/process-a
 
 const GREETING = "Hi, Saleel here from SkillUp. Eth course aan nokkunne?";
 
+const testProcessDependencies = {
+  identifyOrCreateLead: async () => ({ id: "lead-1" }),
+};
+
+function processForTest(input) {
+  return processMessage(input, testProcessDependencies);
+}
+
 function textInput() {
   return {
     channel: "telegram",
@@ -39,7 +47,7 @@ function voiceInput() {
 test("processes normalized text and delivers the completed text result", async () => {
   const sent = [];
   const result = await processAndDeliverTelegramResponse(textInput(), {
-    processMessage,
+    processMessage: processForTest,
     sendTelegramTextMessage: async (chatId, text) => {
       sent.push({ chatId, text });
     },
@@ -55,7 +63,7 @@ test("processes normalized text and delivers the completed text result", async (
 test("acknowledges the unsupported voice result without outbound delivery", async () => {
   const sent = [];
   const result = await processAndDeliverTelegramResponse(voiceInput(), {
-    processMessage,
+    processMessage: processForTest,
     sendTelegramTextMessage: async (chatId, text) => {
       sent.push({ chatId, text });
     },
@@ -72,7 +80,7 @@ test("acknowledges the unsupported voice result without outbound delivery", asyn
 test("propagates an outbound delivery failure to the webhook boundary", async () => {
   await assert.rejects(
     processAndDeliverTelegramResponse(textInput(), {
-      processMessage,
+      processMessage: processForTest,
       sendTelegramTextMessage: async () => {
         throw new Error("synthetic outbound failure");
       },

@@ -5,6 +5,14 @@ import { processMessage } from "../src/core/process/process-message.ts";
 
 const GREETING = "Hi, Saleel here from SkillUp. Eth course aan nokkunne?";
 
+const testProcessDependencies = {
+  identifyOrCreateLead: async () => ({ id: "lead-1" }),
+};
+
+function processForTest(input) {
+  return processMessage(input, testProcessDependencies);
+}
+
 function textInput(overrides = {}) {
   return {
     channel: "telegram",
@@ -41,7 +49,7 @@ function voiceInput() {
 }
 
 test("returns one structured text message for normalized text input", async () => {
-  const result = await processMessage(textInput());
+  const result = await processForTest(textInput());
 
   assert.deepEqual(result, {
     status: "completed",
@@ -53,7 +61,7 @@ test("does not mutate normalized input", async () => {
   const input = textInput();
   const snapshot = structuredClone(input);
 
-  await processMessage(input);
+  await processForTest(input);
 
   assert.deepEqual(input, snapshot);
 });
@@ -64,7 +72,7 @@ test("does not inspect extra raw-channel-shaped fields", async () => {
     message: { text: "raw Telegram data must be ignored" },
   });
 
-  const result = await processMessage(input);
+  const result = await processForTest(input);
 
   assert.deepEqual(result, {
     status: "completed",
@@ -73,7 +81,7 @@ test("does not inspect extra raw-channel-shaped fields", async () => {
 });
 
 test("returns an explicit no-output result for voice without a transcript", async () => {
-  const result = await processMessage(voiceInput());
+  const result = await processForTest(voiceInput());
 
   assert.deepEqual(result, {
     status: "unsupported",
@@ -84,8 +92,8 @@ test("returns an explicit no-output result for voice without a transcript", asyn
 });
 
 test("returns the same deterministic result for repeated text inputs", async () => {
-  const first = await processMessage(textInput({ text: "First text" }));
-  const second = await processMessage(textInput({ text: "Different text" }));
+  const first = await processForTest(textInput({ text: "First text" }));
+  const second = await processForTest(textInput({ text: "Different text" }));
 
   assert.deepEqual(first, second);
   assert.equal(first.messages[0].content, GREETING);
