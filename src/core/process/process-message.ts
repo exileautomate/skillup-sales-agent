@@ -1,5 +1,9 @@
 import type { NormalizedInboundMessage } from "../input/types.ts";
 import {
+  orchestrateTextTurn,
+  type OrchestrateTextTurnDependencies,
+} from "../orchestration/orchestrate-text-turn.ts";
+import {
   getOrCreateConversationForLead,
   type ConversationPersistenceDependencies,
 } from "../conversation/conversation-persistence.ts";
@@ -35,6 +39,8 @@ export type ProcessMessageDependencies = {
     channel: string,
     dependencies?: ConversationPersistenceDependencies,
   ) => ReturnType<typeof getOrCreateConversationForLead>;
+  orchestrateTextTurn?: typeof orchestrateTextTurn;
+  orchestrationDependencies?: OrchestrateTextTurnDependencies;
 };
 
 const PHASE_ONE_GREETING =
@@ -50,7 +56,7 @@ export async function processMessage(
     message.channel,
     message.channelUserId,
   );
-  await (
+  const conversation = await (
     dependencies.getOrCreateConversationForLead ??
     getOrCreateConversationForLead
   )(lead.id, message.channel);
@@ -62,6 +68,11 @@ export async function processMessage(
       messages: [],
     };
   }
+
+  await (dependencies.orchestrateTextTurn ?? orchestrateTextTurn)(
+    { message, lead, conversation },
+    dependencies.orchestrationDependencies,
+  );
 
   return {
     status: "completed",

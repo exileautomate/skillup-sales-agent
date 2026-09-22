@@ -94,6 +94,97 @@ test("builds a stateless strict request with versioned instructions and delimite
   assert.match(request.input, /recentConversation/);
 });
 
+test("accepts a valid first TurnAnalysis output without a repair request", async () => {
+  let calls = 0;
+
+  const result = await analyzeTurn(BASE_INPUT, {
+    createResponse: async () => {
+      calls += 1;
+      return responseFor();
+    },
+  });
+
+  assert.deepEqual(result, BASE_RESULT);
+  assert.equal(calls, 1);
+});
+
+test("repairs one invalid TurnAnalysis output through the shared Module 21 path", async () => {
+  const requests = [];
+  let calls = 0;
+  const repaired = {
+    ...BASE_RESULT,
+    intents: ["demo_acceptance", "booking_request"],
+    salesSignal: "booking_intent",
+    intentRelationship: "dependent",
+  };
+
+  const result = await analyzeTurn(BASE_INPUT, {
+    createResponse: async (request) => {
+      requests.push(request);
+      calls += 1;
+
+      return calls === 1
+        ? { output_text: JSON.stringify({ ...BASE_RESULT, intents: ["unknown"] }) }
+        : responseFor(repaired);
+    },
+  });
+
+  assert.deepEqual(result, repaired);
+  assert.equal(calls, 2);
+  assert.match(requests[1].instructions, /structured_output_repair_v1/);
+  assert.match(requests[1].instructions, /untrusted DATA/);
+  assert.equal(requests[1].text.format.strict, true);
+  assert.equal(requests[1].text.format.name, "turn_analysis");
+});
+
+test("fails safely after one invalid TurnAnalysis repair without routing data", async () => {
+  let calls = 0;
+
+  await assert.rejects(
+    () =>
+      analyzeTurn(BASE_INPUT, {
+        createResponse: async () => {
+          calls += 1;
+          return responseFor({
+            ...BASE_RESULT,
+            intents: ["demo_acceptance", "booking_request"],
+            intentRelationship: "single",
+          });
+        },
+      }),
+    (error) =>
+      error instanceof TurnAnalysisOutputError &&
+      error.reason === "invalid_after_repair",
+  );
+
+  assert.equal(calls, 2);
+});
+
+test("fails safely when the single TurnAnalysis repair request throws", async () => {
+  const repairFailure = new Error("synthetic repair failure");
+  let calls = 0;
+
+  await assert.rejects(
+    () =>
+      analyzeTurn(BASE_INPUT, {
+        createResponse: async () => {
+          calls += 1;
+
+          if (calls === 1) {
+            return { output_text: "not JSON" };
+          }
+
+          throw repairFailure;
+        },
+      }),
+    (error) =>
+      error instanceof TurnAnalysisOutputError &&
+      error.reason === "repair_failed",
+  );
+
+  assert.equal(calls, 2);
+});
+
 test("consumes a single-intent fee analysis", async () => {
   const result = await analyzeWithResult(BASE_INPUT, BASE_RESULT);
 
@@ -634,6 +725,7 @@ test("Module 18, Module 19, and processMessage behavior remain unchanged", async
     {
       identifyOrCreateLead: async () => ({ id: "lead-test" }),
       getOrCreateConversationForLead: async () => ({ id: "conversation-test" }),
+      orchestrateTextTurn: async () => ({}),
     },
   );
 

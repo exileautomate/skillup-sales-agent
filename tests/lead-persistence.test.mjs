@@ -200,6 +200,7 @@ test("processMessage identifies the normalized lead before preserving its respon
       return { id: "lead-4" };
     },
     getOrCreateConversationForLead: async () => ({ id: "conversation-1" }),
+    orchestrateTextTurn: async () => ({}),
   });
 
   assert.deepEqual(calls, [{ channel: "telegram", channelUserId: "101" }]);

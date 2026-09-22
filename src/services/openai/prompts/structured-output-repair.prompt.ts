@@ -6,7 +6,7 @@ export const STRUCTURED_OUTPUT_REPAIR_PROMPT_VERSION =
 export type StructuredOutputRepairPromptInput = Readonly<{
   contractName: string;
   issues: readonly StructuredOutputValidationIssue[];
-  previousOutput: string;
+  previousOutput: unknown;
 }>;
 
 function serializeUntrustedData(value: unknown): string {

@@ -210,6 +210,7 @@ test("processMessage persists lead first, then that lead's channel conversation"
       calls.push(["conversation", leadId, channel]);
       return { id: "conversation-runtime" };
     },
+    orchestrateTextTurn: async () => {},
   });
 
   assert.deepEqual(calls, [
