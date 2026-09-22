@@ -1,5 +1,9 @@
 import type { NormalizedInboundMessage } from "../input/types.ts";
 import {
+  getOrCreateConversationForLead,
+  type ConversationPersistenceDependencies,
+} from "../conversation/conversation-persistence.ts";
+import {
   getOrCreateLeadByChannelIdentity,
   type LeadPersistenceDependencies,
 } from "../lead/lead-persistence.ts";
@@ -26,6 +30,11 @@ export type ProcessMessageDependencies = {
     channelUserId: string,
     dependencies?: LeadPersistenceDependencies,
   ) => ReturnType<typeof getOrCreateLeadByChannelIdentity>;
+  getOrCreateConversationForLead?: (
+    leadId: string,
+    channel: string,
+    dependencies?: ConversationPersistenceDependencies,
+  ) => ReturnType<typeof getOrCreateConversationForLead>;
 };
 
 const PHASE_ONE_GREETING =
@@ -35,10 +44,16 @@ export async function processMessage(
   message: NormalizedInboundMessage,
   dependencies: ProcessMessageDependencies = {},
 ): Promise<ProcessMessageResult> {
-  await (dependencies.identifyOrCreateLead ?? getOrCreateLeadByChannelIdentity)(
+  const lead = await (
+    dependencies.identifyOrCreateLead ?? getOrCreateLeadByChannelIdentity
+  )(
     message.channel,
     message.channelUserId,
   );
+  await (
+    dependencies.getOrCreateConversationForLead ??
+    getOrCreateConversationForLead
+  )(lead.id, message.channel);
 
   if (message.messageType === "voice") {
     return {

@@ -41,6 +41,25 @@ export async function listConversationsForLead(
   return (data ?? []) as Conversation[];
 }
 
+export async function findLatestConversationForLeadChannel(
+  leadId: Uuid,
+  channel: string,
+  client?: RepositoryClient,
+): Promise<Conversation | null> {
+  const { data, error } = await (await getRepositoryClient(client))
+    .from("conversations")
+    .select("*")
+    .eq("lead_id", leadId)
+    .eq("channel", channel)
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  throwIfRepositoryError(error, "latest conversation lookup by lead and channel");
+  return data as Conversation | null;
+}
+
 export async function createConversation(
   input: CreateConversationInput,
   client?: RepositoryClient,

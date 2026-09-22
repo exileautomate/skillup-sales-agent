@@ -15,6 +15,7 @@ import {
   findLeadByChannelUserId,
 } from "../src/lib/db/repositories/leads.ts";
 import {
+  findLatestConversationForLeadChannel,
   listConversationsForLead,
   updateConversation,
 } from "../src/lib/db/repositories/conversations.ts";
@@ -42,6 +43,10 @@ function createMockClient(result, trace = []) {
       },
       order(column, options) {
         trace.push(["order", column, options]);
+        return query;
+      },
+      limit(value) {
+        trace.push(["limit", value]);
         return query;
       },
       maybeSingle() {
@@ -182,6 +187,42 @@ test("conversation primitives return empty lead lists and surface update results
 
   assert.deepEqual(conversations, []);
   assert.deepEqual(updated, { id: "conversation-1", pending_question: "Which branch?" });
+});
+
+test("latest conversation lookup scopes channel and orders ties deterministically", async () => {
+  const trace = [];
+  const latest = await findLatestConversationForLeadChannel(
+    "lead-1",
+    "telegram",
+    createMockClient(
+      {
+        data: { id: "conversation-2", lead_id: "lead-1", channel: "telegram" },
+        error: null,
+      },
+      trace,
+    ),
+  );
+
+  assert.deepEqual(latest, {
+    id: "conversation-2",
+    lead_id: "lead-1",
+    channel: "telegram",
+  });
+  assert.deepEqual(
+    trace.filter(([operation]) => operation === "eq"),
+    [
+      ["eq", "lead_id", "lead-1"],
+      ["eq", "channel", "telegram"],
+    ],
+  );
+  assert.deepEqual(
+    trace.filter(([operation]) => operation === "order"),
+    [
+      ["order", "created_at", { ascending: false }],
+      ["order", "id", { ascending: false }],
+    ],
+  );
+  assert.deepEqual(trace.find(([operation]) => operation === "limit"), ["limit", 1]);
 });
 
 test("demo booking primitives preserve database results without confirmation logic", async () => {

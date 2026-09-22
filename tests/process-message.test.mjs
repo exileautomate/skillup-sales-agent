@@ -7,6 +7,7 @@ const GREETING = "Hi, Saleel here from SkillUp. Eth course aan nokkunne?";
 
 const testProcessDependencies = {
   identifyOrCreateLead: async () => ({ id: "lead-1" }),
+  getOrCreateConversationForLead: async () => ({ id: "conversation-1" }),
 };
 
 function processForTest(input) {
