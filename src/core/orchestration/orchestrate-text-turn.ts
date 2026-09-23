@@ -5,6 +5,7 @@ import {
   type LanguageResolverInput,
   type ResolvedLanguage,
 } from "../language/language-resolver.ts";
+import { applyLeadMemory } from "../memory/lead-memory.ts";
 import { routeQuery } from "../routing/query-router.ts";
 import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import {
@@ -22,6 +23,7 @@ import {
   getCourseById,
   getCourseByInternalName,
 } from "../../lib/db/repositories/courses.ts";
+import { updateLead } from "../../lib/db/repositories/leads.ts";
 import type {
   Branch,
   Conversation,
@@ -42,6 +44,7 @@ import type {
 export type OrchestrateTextTurnDependencies = Readonly<{
   normalizeSemanticMeaning?: typeof normalizeSemanticMeaning;
   analyzeTurn?: typeof analyzeTurn;
+  applyLeadMemory?: typeof applyLeadMemory;
   resolveLanguage?: typeof resolveLanguage;
   routeQuery?: typeof routeQuery;
   getCourseById?: typeof getCourseById;
@@ -49,6 +52,7 @@ export type OrchestrateTextTurnDependencies = Readonly<{
   getBranchByName?: typeof getBranchByName;
   getActiveBranchesForCourse?: typeof getActiveBranchesForCourse;
   listBranches?: typeof listBranches;
+  updateLead?: typeof updateLead;
 }>;
 
 export type OrchestrateTextTurnInput = Readonly<{
@@ -65,6 +69,7 @@ const SHORT_NEUTRAL_ACKNOWLEDGEMENTS = new Set(["ok", "yes", "fine", "hmm"]);
 const defaultDependencies: ResolvedDependencies = {
   normalizeSemanticMeaning,
   analyzeTurn,
+  applyLeadMemory,
   resolveLanguage,
   routeQuery,
   getCourseById,
@@ -72,6 +77,7 @@ const defaultDependencies: ResolvedDependencies = {
   getBranchByName,
   getActiveBranchesForCourse,
   listBranches,
+  updateLead,
 };
 
 function resolveDependencies(
@@ -388,12 +394,25 @@ export async function orchestrateTextTurn(
     existingConversationCourse,
   );
   const turnAnalysis = await resolved.analyzeTurn(turnAnalysisInput);
+  const leadMemoryResult = await resolved.applyLeadMemory(
+    {
+      lead: input.lead,
+      semanticNormalization,
+      turnAnalysis,
+    },
+    {
+      getBranchByName: resolved.getBranchByName,
+      getCourseByInternalName: resolved.getCourseByInternalName,
+      updateLead: resolved.updateLead,
+    },
+  );
+  const currentLead = leadMemoryResult.lead;
   const languageResolverInput: LanguageResolverInput = {
     requestedResponseLanguage: turnAnalysis.requestedResponseLanguage,
     currentDetectedLanguage: semanticNormalization.detectedOriginalLanguage,
     recentLanguage: null,
-    storedPreferredLanguage: isResolvedLanguage(input.lead.preferred_language)
-      ? input.lead.preferred_language
+    storedPreferredLanguage: isResolvedLanguage(currentLead.preferred_language)
+      ? currentLead.preferred_language
       : null,
     defaultLanguage: DEMO_DEFAULT_LANGUAGE,
     inheritCurrentLanguageContext: shouldInheritCurrentLanguageContext(
@@ -403,7 +422,7 @@ export async function orchestrateTextTurn(
   const resolvedLanguage = resolved.resolveLanguage(languageResolverInput);
   const queryRoute = resolved.routeQuery(turnAnalysis);
   const sources = await loadSources(
-    input.lead,
+    currentLead,
     input.conversation,
     turnAnalysis,
     queryRoute,
@@ -412,7 +431,7 @@ export async function orchestrateTextTurn(
   );
 
   return {
-    lead: input.lead,
+    lead: currentLead,
     conversation: input.conversation,
     semanticNormalization,
     turnAnalysis,

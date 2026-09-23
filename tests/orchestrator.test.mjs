@@ -6,6 +6,7 @@ import {
   orchestrateTextTurn,
   shouldInheritCurrentLanguageContext,
 } from "../src/core/orchestration/orchestrate-text-turn.ts";
+import { applyLeadMemory } from "../src/core/memory/lead-memory.ts";
 import { resolveLanguage } from "../src/core/language/language-resolver.ts";
 import { processMessage } from "../src/core/process/process-message.ts";
 import {
@@ -188,6 +189,10 @@ function dependencies(overrides = {}) {
   return {
     normalizeSemanticMeaning: async () => semanticNormalization(),
     analyzeTurn: async () => turnAnalysis(),
+    applyLeadMemory: async ({ lead: storedLead }) => ({
+      lead: storedLead,
+      changedFields: [],
+    }),
     resolveLanguage,
     routeQuery: () => queryRoute(),
     getCourseById: async () => null,
@@ -230,6 +235,10 @@ test("processMessage coordinates the complete text-turn sequence", async () => {
         events.push("turn_analysis");
         return analyzedTurn;
       },
+      applyLeadMemory: async ({ lead: currentLead }) => {
+        events.push("lead_memory");
+        return { lead: currentLead, changedFields: [] };
+      },
       resolveLanguage: () => {
         events.push("language_resolution");
         return "manglish";
@@ -257,6 +266,7 @@ test("processMessage coordinates the complete text-turn sequence", async () => {
     "conversation",
     "semantic_normalization",
     "turn_analysis",
+    "lead_memory",
     "language_resolution",
     "query_routing",
     "course_source",
@@ -408,6 +418,53 @@ test("explicit requested response language wins", async () => {
   );
 
   assert.equal(handoff.resolvedLanguage, "malayalam");
+});
+
+test("updated Lead memory drives same-turn language resolution and handoff sources", async () => {
+  const storedLead = lead();
+  const updatedLead = lead({
+    preferred_language: "malayalam",
+    updated_at: "2026-09-23T10:00:00.000Z",
+  });
+  let resolverInput;
+  let updateCalls = 0;
+  const integrationDependencies = dependencies({
+    normalizeSemanticMeaning: async () =>
+      semanticNormalization({
+        detectedOriginalLanguage: "unclear",
+        preservedEntities: [],
+      }),
+    analyzeTurn: async () =>
+      turnAnalysis({
+        course: null,
+        requestedResponseLanguage: "malayalam",
+      }),
+    resolveLanguage: (input) => {
+      resolverInput = input;
+      return resolveLanguage(input);
+    },
+    routeQuery: () => queryRoute({ needsMemory: true }),
+    applyLeadMemory,
+    updateLead: async (id, patch) => {
+      updateCalls += 1;
+      assert.equal(id, storedLead.id);
+      assert.deepEqual(patch, { preferred_language: "malayalam" });
+      return updatedLead;
+    },
+  });
+  const handoff = await orchestrateTextTurn(
+    {
+      message: textMessage(),
+      lead: storedLead,
+      conversation: conversation(),
+    },
+    integrationDependencies,
+  );
+
+  assert.equal(updateCalls, 1);
+  assert.equal(resolverInput.storedPreferredLanguage, "malayalam");
+  assert.strictEqual(handoff.lead, updatedLead);
+  assert.strictEqual(handoff.sources.memorySource.data, updatedLead);
 });
 
 test("valid stored preference can resolve a short neutral turn", async () => {

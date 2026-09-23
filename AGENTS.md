@@ -29,10 +29,13 @@ Voice metadata is normalized and identity is persisted, but voice remains unsupp
 | Phase 1 | Foundation, Telegram, deployment | COMPLETE |
 | Phase 2 | Database foundation | COMPLETE FOR APPROVED DEMO SCOPE |
 | Phase 3 | Input and intelligence foundation | COMPLETE |
+| Phase 4 | Business logic, memory, state, and confidence | ACTIVE — M24 COMPLETE; M25 NEXT |
 
 Current committed Phase 3 endpoint: `f5d6dfea8b87b0cd2fbba6bdef22bc58cb9e4a5a`.
 
-Next planned module: **Module 24 — Lead Memory**. Do not implement it unless the task explicitly starts Module 24.
+Active Phase 4 scope: **M24 Lead Memory — COMPLETE; M25 Conversation State — NEXT; M26 Business / Sales Logic — PLANNED; M27 Confidence Engine — PLANNED**.
+
+Deferred from the current demo: **M28 Course Context Switching, M29 Demo Rejection / Nurture / Stop**.
 
 - Module 16 — Message Persistence: **INTENTIONALLY SKIPPED**.
 - Module 17 — Database Security / RLS Baseline: **INTENTIONALLY SKIPPED**.
@@ -80,6 +83,7 @@ src/core/process/process-message.ts
        -> normalizeSemanticMeaning(message.text)
        -> resolve persisted current-course context read-only
        -> analyzeTurn({ originalMessage, normalizedEnglish, safe context })
+       -> applyLeadMemory(...) using explicit current-turn facts
        -> resolveLanguage(...)
        -> routeQuery(turnAnalysis)
        -> load available structured sources / mark deferred sources
@@ -110,6 +114,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | Semantic contract | `SemanticNormalizationResult` | `src/core/types/semantic-normalization.ts` | Normalized English, detected language, uncertainty, preserved entities. |
 | Language resolution | `resolveLanguage` | `src/core/language/language-resolver.ts` | Deterministic priority resolver. |
 | Current-turn analysis | `analyzeTurn` | `src/services/openai/turn-analysis.ts` | OpenAI + strict schema + one repair. |
+| Lead Memory | `deriveLeadMemoryUpdate`, `applyLeadMemory` | `src/core/memory/lead-memory.ts` | Conservative explicit-fact memory; one combined Lead update maximum. |
 | Turn contract/vocabulary | `TurnAnalysis`, `TURN_INTENTS` | `src/core/types/turn-analysis.ts` | Current-turn facts only; no business decisions. |
 | Generic raw validation | `validateStructuredOutput` | `src/core/validation/structured-output.ts` | JSON parse + Zod; concise bounded issues. |
 | One-repair workflow | `validateWithOneRepair` | `src/core/validation/structured-output.ts` | Zero or one injected repair; fallback control signal. |
@@ -162,6 +167,12 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | M21 | Structured Output Validation | Strict Zod validation, one repair, safe fallback signal. |
 | M22 | Query Router | Which trusted source categories are needed. |
 | M23 | Orchestrator Expansion | Coordinates intelligence and available source loading. |
+| M24 | Lead Memory | **COMPLETE**; persists approved stable explicit facts only. |
+| M25 | Conversation State | Active Phase 4 scope; not implemented. |
+| M26 | Business / Sales Logic | Active Phase 4 scope; not implemented. |
+| M27 | Confidence Engine | Active Phase 4 scope; not implemented. |
+| M28 | Course Context Switching | **DEFERRED** from the current demo. |
+| M29 | Demo Rejection / Nurture / Stop | **DEFERRED** from the current demo. |
 
 ## 7. Important Contracts / Types
 
@@ -194,7 +205,7 @@ LLM knowledge is outside this authority hierarchy and is never business truth.
 | Live tools | Live checks, assets, actions | Symbolic requests only; execution deferred. |
 | Structured DB | Exact/mutable facts | Implemented for course/branch reads and persistence. |
 | Approved RAG | Deep approved explanations | Deferred; route/source marker only. |
-| Memory | Stable student information | No M24 engine; raw Lead row may be handed off read-only. |
+| Memory | Stable student information | M24 persists approved explicit Lead facts; the updated Lead may be handed off read-only. |
 | State | Temporary workflow context | No M25 engine; raw Conversation row may be handed off read-only. |
 
 ## 9. Database / Persistence Map
@@ -242,6 +253,7 @@ Current final baseline: **172 passed, 0 failed**; TypeScript and production buil
 | Semantic normalization | `tests/semantic-normalizer.test.mjs` |
 | Language resolver | `tests/language-resolver.test.mjs` |
 | TurnAnalysis | `tests/turn-analysis.test.mjs` |
+| Lead Memory | `tests/lead-memory.test.mjs` |
 | Structured validation/repair | `tests/structured-output-validation.test.mjs` |
 | Query Router | `tests/query-router.test.mjs` |
 | Orchestration/source loading | `tests/orchestrator.test.mjs` |
@@ -264,12 +276,12 @@ The Node test runner may emit the known non-failing `MODULE_TYPELESS_PACKAGE_JSO
 
 - Message persistence and recent-message history; `recentLanguage` is currently always `null`.
 - RLS/database security baseline.
-- Lead Memory engine and Lead updates.
+- M25 Conversation State is next; M26 Business / Sales Logic and M27 Confidence Engine remain planned.
 - Conversation State engine and workflow mutation.
 - Business/Sales Logic, qualification/eligibility decisions, sales groups, and objection handling.
 - Confidence Engine.
-- Course Context Switching behavior.
-- Demo rejection/nurture/stop behavior.
+- Course Context Switching behavior (M28 deferred from current demo).
+- Demo rejection/nurture/stop behavior (M29 deferred from current demo).
 - RAG ingestion/retrieval, embeddings, vector search, chunk selection, and source merge.
 - Tool execution, demo availability execution, document/location execution, and booking creation.
 - Real response planning/generation, Saleel style engine, few-shot selection, and verifier.
