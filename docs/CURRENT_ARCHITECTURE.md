@@ -6,16 +6,16 @@
 |---|---|
 | Repository | `https://github.com/exileautomate/skillup-sales-agent.git` |
 | Branch | `main` |
-| Committed SHA documented | `f5d6dfea8b87b0cd2fbba6bdef22bc58cb9e4a5a` |
-| Current completed phase | Phase 3 — Input & Intelligence Foundation |
-| Next planned module | Module 25 — Conversation State |
-| Final committed regression | 172 passed, 0 failed |
-| TypeScript/build at checkpoint | Passed / passed |
+| Committed M24 checkpoint | `7676b4b65542a26de459691a9630a6053aa3bebf` |
+| Current completed checkpoint | M24 — Lead Memory |
+| M25 status | COMPLETE |
+| Final M25 pre-commit regression | 198 passed, 0 failed |
+| TypeScript/build at M25 pre-commit check | Passed / passed |
 | Current inbound channel | Telegram |
 | Current text output | Temporary deterministic Saleel placeholder |
 | Current voice output | Unsupported after Lead/Conversation persistence |
 
-The system currently has a working Telegram transport, persistent Lead and Conversation identity, conservative explicit-fact Lead Memory, structured course/branch data, two constrained OpenAI analysis stages, deterministic language resolution, deterministic source routing, and an orchestration handoff.
+The system currently has a working Telegram transport, persistent Lead and Conversation identity, conservative explicit-fact Lead Memory, typed M25 Conversation State with safe initial-course establishment, structured course/branch data, two constrained OpenAI analysis stages, deterministic language resolution, deterministic source routing, and an orchestration handoff.
 
 It does **not** yet have the Phase 4 business engine or a real student-facing AI answer pipeline.
 
@@ -29,18 +29,18 @@ Saleel is the SkillUp education sales agent persona. The current system can:
 - reuse or create a persistent Conversation;
 - normalize text meaning into English while preserving uncertainty/entities;
 - analyze what is happening in the current student turn;
-- persist approved stable Lead facts conservatively after trusted TurnAnalysis;
+- persist approved stable Lead facts conservatively through M24 after trusted TurnAnalysis;
+- expose typed M25 `ConversationState` and conservatively establish an initial current course from one explicit current-turn course entity plus a canonical TurnAnalysis course;
 - choose a response language deterministically;
 - decide which trusted source categories are required;
 - load available course and branch facts without making business conclusions;
-- expose raw Lead/Conversation rows as read-only source material when routed;
+- expose updated Lead data and the typed `ConversationState` snapshot as routed memory/state sources; the top-level handoff continues to carry the persisted `Conversation` row;
 - mark RAG and tool requirements as deferred;
 - produce a typed internal `OrchestrationHandoff`.
 
 The current system intentionally cannot yet:
 
 - decide eligibility, qualification, sales actions, or confidence;
-- update Conversation State;
 - generate a factual student-facing business response;
 - retrieve RAG knowledge;
 - execute tools, check live availability, or create bookings;
@@ -138,8 +138,8 @@ Phase 1 also established structured safe logging, request IDs, and a small appli
 | Module | Name | Status | Current architectural result |
 |---|---|---|---|
 | 24 | Lead Memory | COMPLETE | Conservative explicit-fact Lead updates integrated after TurnAnalysis. |
-| 25 | Conversation State | NEXT | Active current-demo scope. |
-| 26 | Business / Sales Logic | PLANNED | Active current-demo scope. |
+| 25 | Conversation State | COMPLETE | Typed workflow snapshot, controlled persistence, and safe initial-course establishment. |
+| 26 | Business / Sales Logic | NEXT | Active current-demo scope. |
 | 27 | Confidence Engine | PLANNED | Active current-demo scope. |
 | 28 | Course Context Switching | **DEFERRED** | Out of current demo scope. |
 | 29 | Demo Rejection / Nurture / Stop | **DEFERRED** | Out of current demo scope. |
@@ -181,8 +181,9 @@ NormalizedTextInboundMessage
        -> load current Conversation course read-only if present
        -> build minimal TurnAnalysis input/context
        -> analyzeTurn(...)
-       -> applyLeadMemory(...) from explicit current-turn facts
-       -> resolveLanguage(...)
+        -> applyLeadMemory(...) from explicit current-turn facts
+        -> applyConversationState(...) using only safe initial-course establishment
+        -> resolveLanguage(...)
        -> routeQuery(turnAnalysis)
        -> load structured sources / build deferred markers
        -> return OrchestrationHandoff
@@ -623,10 +624,11 @@ It coordinates:
 3. TurnAnalysis input assembly;
 4. TurnAnalysis;
 5. conservative Lead Memory update;
-6. response-language resolution;
-7. deterministic Query Router;
-8. currently available source loading;
-9. handoff construction.
+6. Conversation State update (initial course only when safely evidenced);
+7. response-language resolution;
+8. deterministic Query Router;
+9. currently available source loading;
+10. handoff construction.
 
 It contains no eligibility, qualification, sales, confidence, objection, demo progression, booking progression, response-writing, or style rules.
 
@@ -644,7 +646,7 @@ It contains no eligibility, qualification, sales, confidence, objection, demo pr
 `OrchestrationHandoff` is an internal trusted package containing:
 
 - the current persisted `lead` row after M24;
-- the read-only `conversation` row;
+- the current persisted `conversation` row after M25;
 - `semanticNormalization`;
 - `turnAnalysis`;
 - `resolvedLanguage`;
@@ -711,7 +713,7 @@ If routed, the current persisted Lead row after M24 is returned as `loaded`. The
 
 ### State source
 
-If routed, the already-loaded Conversation row is returned as `loaded`. This is raw read-only workflow context, not an M25 state engine.
+If routed, M25 derives and returns a typed `ConversationState` snapshot from the current persisted Conversation row. The top-level handoff retains that Conversation row for downstream persistence-aware modules; no duplicate state store exists.
 
 ### RAG source
 
@@ -766,13 +768,13 @@ If a named branch exists but is not among the active course branches, both sourc
 | Concept | Current representation | Current permissions |
 |---|---|---|
 | Stable student context | Persisted `Lead` row updated conservatively by M24 | M24-approved writes; read-only handoff when routed |
-| Workflow/session context | Raw persisted `Conversation` row | Read-only handoff when routed |
+| Workflow/session context | Persisted `Conversation` row plus M25 `ConversationState` snapshot | M25 approved-field persistence; typed snapshot when routed |
 
 ### Module boundary
 
-- M25 will introduce Conversation State behavior.
+M24 stores only explicit stable student facts and does not decide eligibility or mutate Conversation workflow fields. M25 represents the existing Conversation workflow fields, filters patches to those fields, makes at most one write, and establishes an initial current course only from one explicit current-turn semantic course entity plus a canonical TurnAnalysis course.
 
-M24 stores only explicit stable student facts and does not decide eligibility or mutate Conversation workflow fields. M25 is not implemented.
+M25 does not decide sales stage, qualification, demo handling, booking progression, confidence, or course switching.
 
 The current naming `memorySource` and `stateSource`, combined with `SourceLoad`, provides a replaceable boundary for those later capabilities without pretending they already exist.
 
@@ -798,7 +800,7 @@ Responsibilities:
 - **Tools**: live checks, assets, and later actions.
 - **LLM**: language understanding within strict contracts; never fee/eligibility/availability truth.
 
-Current implementation loads structured DB facts, persists conservative M24 Lead memory, exposes updated Lead and raw Conversation context read-only in the handoff, and defers RAG/tools. It does not yet merge competing source results.
+Current implementation loads structured DB facts, persists conservative M24 Lead memory, applies the narrow M25 state boundary, exposes updated Lead and typed Conversation State in the handoff, and defers RAG/tools. It does not yet merge competing source results.
 
 ## 20. AI Service Architecture
 
@@ -909,6 +911,7 @@ No secret values belong in documentation, tests, logs, prompts, or committed fil
 | `tests/database-repositories.test.mjs` | Repository queries, absence, failures, booking/knowledge primitives |
 | `tests/lead-persistence.test.mjs` | Stable identity, conflict reread, process ordering |
 | `tests/conversation-persistence.test.mjs` | Reuse/create policy, ordering, process ordering |
+| `tests/conversation-state.test.mjs` | M25 state snapshot, controlled one-write patches, safe initial course, failures, immutability |
 | `tests/semantic-normalizer.test.mjs` | Request contract, prompt boundaries, real one-repair integration |
 | `tests/language-resolver.test.mjs` | Priority, context inheritance, determinism/immutability |
 | `tests/turn-analysis.test.mjs` | Contract, prompts, intents, ambiguity, one-repair integration |
@@ -944,8 +947,8 @@ The known `MODULE_TYPELESS_PACKAGE_JSON` warning is non-failing.
 - M16 was skipped: no message table, recent history, or persisted transcript.
 - `recentLanguage` is always `null` in current orchestration.
 - M17 was skipped: no RLS baseline.
-- M25 Conversation State is next; M26 Business / Sales Logic and M27 Confidence Engine remain planned.
-- Conversation State behavior/updates do not exist.
+- M25 Conversation State is COMPLETE; M26 Business / Sales Logic is NEXT; M27 Confidence Engine remains planned.
+- M25 does not make sales-stage, qualification, demo, booking, confidence, or course-switching decisions.
 - No business/sales decision engine exists.
 - No eligibility/qualification decision is made.
 - No confidence engine exists.
@@ -967,8 +970,8 @@ The current Phase 4 scope is:
 | Module | Scope status | Responsibility / boundary |
 |---|---|---|
 | M24 | COMPLETE | Stable student facts; do not mix with current-turn extraction or decisions. |
-| M25 | NEXT | Temporary workflow context and controlled state updates. |
-| M26 | PLANNED | Deterministic qualification/actions; use trusted handoff sources. |
+| M25 | COMPLETE | Temporary workflow state, controlled updates, and initial-course establishment only. |
+| M26 | NEXT | Deterministic qualification/actions; use trusted handoff sources. |
 | M27 | PLANNED | Explicit confidence handling separate from provider prose. |
 | M28 | **DEFERRED** | Course Context Switching is out of current demo scope. |
 | M29 | **DEFERRED** | Demo Rejection / Nurture / Stop is out of current demo scope. |
@@ -993,6 +996,7 @@ src/
     validation/                       Zod schemas and one-repair engine
     routing/                          deterministic source routing
     memory/                           conservative stable Lead Memory
+    state/                            M25 Conversation State boundary
     orchestration/                    text-turn coordination and handoff
     process/                          processMessage outer turn manager
   services/openai/

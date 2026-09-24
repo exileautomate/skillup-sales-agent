@@ -6,6 +6,10 @@ import {
   type ResolvedLanguage,
 } from "../language/language-resolver.ts";
 import { applyLeadMemory } from "../memory/lead-memory.ts";
+import {
+  applyConversationState,
+  getConversationState,
+} from "../state/conversation-state.ts";
 import { routeQuery } from "../routing/query-router.ts";
 import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import {
@@ -24,6 +28,7 @@ import {
   getCourseByInternalName,
 } from "../../lib/db/repositories/courses.ts";
 import { updateLead } from "../../lib/db/repositories/leads.ts";
+import { updateConversation } from "../../lib/db/repositories/conversations.ts";
 import type {
   Branch,
   Conversation,
@@ -45,6 +50,7 @@ export type OrchestrateTextTurnDependencies = Readonly<{
   normalizeSemanticMeaning?: typeof normalizeSemanticMeaning;
   analyzeTurn?: typeof analyzeTurn;
   applyLeadMemory?: typeof applyLeadMemory;
+  applyConversationState?: typeof applyConversationState;
   resolveLanguage?: typeof resolveLanguage;
   routeQuery?: typeof routeQuery;
   getCourseById?: typeof getCourseById;
@@ -53,6 +59,7 @@ export type OrchestrateTextTurnDependencies = Readonly<{
   getActiveBranchesForCourse?: typeof getActiveBranchesForCourse;
   listBranches?: typeof listBranches;
   updateLead?: typeof updateLead;
+  updateConversation?: typeof updateConversation;
 }>;
 
 export type OrchestrateTextTurnInput = Readonly<{
@@ -70,6 +77,7 @@ const defaultDependencies: ResolvedDependencies = {
   normalizeSemanticMeaning,
   analyzeTurn,
   applyLeadMemory,
+  applyConversationState,
   resolveLanguage,
   routeQuery,
   getCourseById,
@@ -78,6 +86,7 @@ const defaultDependencies: ResolvedDependencies = {
   getActiveBranchesForCourse,
   listBranches,
   updateLead,
+  updateConversation,
 };
 
 function resolveDependencies(
@@ -340,7 +349,7 @@ function buildToolSource(queryRoute: QueryRoute): DeferredToolSource {
 
 async function loadSources(
   lead: Readonly<Lead>,
-  conversation: Readonly<Conversation>,
+  conversationState: ReturnType<typeof getConversationState>,
   turnAnalysis: TurnAnalysis,
   queryRoute: QueryRoute,
   existingConversationCourse: Readonly<Course> | null,
@@ -368,7 +377,7 @@ async function loadSources(
       ? { status: "loaded", data: lead }
       : { status: "not_required", data: null },
     stateSource: queryRoute.needsState
-      ? { status: "loaded", data: conversation }
+      ? { status: "loaded", data: conversationState }
       : { status: "not_required", data: null },
     rag: buildRagSource(queryRoute),
     tools: buildToolSource(queryRoute),
@@ -407,6 +416,19 @@ export async function orchestrateTextTurn(
     },
   );
   const currentLead = leadMemoryResult.lead;
+  const conversationStateResult = await resolved.applyConversationState(
+    {
+      conversation: input.conversation,
+      semanticNormalization,
+      turnAnalysis,
+    },
+    {
+      getCourseByInternalName: resolved.getCourseByInternalName,
+      updateConversation: resolved.updateConversation,
+    },
+  );
+  const currentConversation = conversationStateResult.conversation;
+  const currentConversationState = getConversationState(currentConversation);
   const languageResolverInput: LanguageResolverInput = {
     requestedResponseLanguage: turnAnalysis.requestedResponseLanguage,
     currentDetectedLanguage: semanticNormalization.detectedOriginalLanguage,
@@ -423,7 +445,7 @@ export async function orchestrateTextTurn(
   const queryRoute = resolved.routeQuery(turnAnalysis);
   const sources = await loadSources(
     currentLead,
-    input.conversation,
+    currentConversationState,
     turnAnalysis,
     queryRoute,
     existingConversationCourse,
@@ -432,7 +454,7 @@ export async function orchestrateTextTurn(
 
   return {
     lead: currentLead,
-    conversation: input.conversation,
+    conversation: currentConversation,
     semanticNormalization,
     turnAnalysis,
     resolvedLanguage,

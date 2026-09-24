@@ -7,6 +7,7 @@ import {
   shouldInheritCurrentLanguageContext,
 } from "../src/core/orchestration/orchestrate-text-turn.ts";
 import { applyLeadMemory } from "../src/core/memory/lead-memory.ts";
+import { applyConversationState } from "../src/core/state/conversation-state.ts";
 import { resolveLanguage } from "../src/core/language/language-resolver.ts";
 import { processMessage } from "../src/core/process/process-message.ts";
 import {
@@ -193,6 +194,10 @@ function dependencies(overrides = {}) {
       lead: storedLead,
       changedFields: [],
     }),
+    applyConversationState: async ({ conversation: storedConversation }) => ({
+      conversation: storedConversation,
+      changedFields: [],
+    }),
     resolveLanguage,
     routeQuery: () => queryRoute(),
     getCourseById: async () => null,
@@ -239,6 +244,10 @@ test("processMessage coordinates the complete text-turn sequence", async () => {
         events.push("lead_memory");
         return { lead: currentLead, changedFields: [] };
       },
+      applyConversationState: async ({ conversation: currentConversation }) => {
+        events.push("conversation_state");
+        return { conversation: currentConversation, changedFields: [] };
+      },
       resolveLanguage: () => {
         events.push("language_resolution");
         return "manglish";
@@ -267,6 +276,7 @@ test("processMessage coordinates the complete text-turn sequence", async () => {
     "semantic_normalization",
     "turn_analysis",
     "lead_memory",
+    "conversation_state",
     "language_resolution",
     "query_routing",
     "course_source",
@@ -785,7 +795,7 @@ test("loads the general branch list when neither branch nor course is known", as
   });
 });
 
-test("passes raw persisted Lead and Conversation only when requested", async () => {
+test("passes Lead memory and the M25 Conversation State snapshot only when requested", async () => {
   const storedLead = lead();
   const storedConversation = conversation();
   const handoff = await orchestrateTextTurn(
@@ -801,9 +811,62 @@ test("passes raw persisted Lead and Conversation only when requested", async () 
   );
 
   assert.strictEqual(handoff.sources.memorySource.data, storedLead);
-  assert.strictEqual(handoff.sources.stateSource.data, storedConversation);
+  assert.deepEqual(handoff.sources.stateSource.data, {
+    currentCourseId: null,
+    currentSalesStage: "NEW",
+    qualificationStatus: "UNKNOWN",
+    demoPushStatus: "NORMAL",
+    demoRejectionCount: 0,
+    pendingQuestion: null,
+    bookingProgress: {},
+    confidenceState: {},
+  });
   assert.equal(handoff.sources.memorySource.status, "loaded");
   assert.equal(handoff.sources.stateSource.status, "loaded");
+});
+
+test("uses the M25-updated Conversation and snapshot in the same-turn handoff", async () => {
+  const storedConversation = conversation();
+  const updatedConversation = conversation({
+    current_course_id: "course-data-analytics",
+    updated_at: "2026-09-23T10:00:00.000Z",
+  });
+  let updateCalls = 0;
+
+  const handoff = await orchestrateTextTurn(
+    {
+      message: textMessage(),
+      lead: lead(),
+      conversation: storedConversation,
+    },
+    dependencies({
+      applyConversationState,
+      routeQuery: () => queryRoute({ needsState: true }),
+      getCourseByInternalName: async () => course(),
+      updateConversation: async (id, patch) => {
+        updateCalls += 1;
+        assert.equal(id, storedConversation.id);
+        assert.deepEqual(patch, { current_course_id: "course-data-analytics" });
+        return updatedConversation;
+      },
+    }),
+  );
+
+  assert.equal(updateCalls, 1);
+  assert.strictEqual(handoff.conversation, updatedConversation);
+  assert.deepEqual(handoff.sources.stateSource, {
+    status: "loaded",
+    data: {
+      currentCourseId: "course-data-analytics",
+      currentSalesStage: "NEW",
+      qualificationStatus: "UNKNOWN",
+      demoPushStatus: "NORMAL",
+      demoRejectionCount: 0,
+      pendingQuestion: null,
+      bookingProgress: {},
+      confidenceState: {},
+    },
+  });
 });
 
 test("marks RAG and symbolic tools deferred without fake results", async () => {

@@ -2,6 +2,7 @@ import type { ResolvedLanguage } from "../language/language-resolver.ts";
 import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import type { SemanticNormalizationResult } from "../types/semantic-normalization.ts";
 import type { TurnAnalysis } from "../types/turn-analysis.ts";
+import type { ConversationState } from "../state/conversation-state.ts";
 import type {
   Branch,
   Conversation,
@@ -63,7 +64,7 @@ export type OrchestrationSources = Readonly<{
   structuredBranchFacts: SourceLoad<readonly Readonly<Branch>[]>;
   courseBranchMapping: SourceLoad<CourseBranchMappingEvidence>;
   memorySource: SourceLoad<Readonly<Lead>>;
-  stateSource: SourceLoad<Readonly<Conversation>>;
+  stateSource: SourceLoad<ConversationState>;
   rag: DeferredRagSource;
   tools: DeferredToolSource;
 }>;
