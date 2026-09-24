@@ -14,6 +14,12 @@
 | M27 status | COMPLETE |
 | M28 status | DEFERRED |
 | M29 status | DEFERRED |
+| M30 status | COMPLETE WITH ACCEPTED DEMO LIMITATION |
+| M31 status | PLANNED |
+| M32 status | PLANNED |
+| M33 status | PLANNED |
+
+Permanent Phase 4 development history: `PHASE_4_BUSINESS_LOGIC_MEMORY_STATE_CONFIDENCE_DEVELOPMENT_TRACKER.md`.
 | Final M25 pre-commit regression | 198 passed, 0 failed |
 | TypeScript/build at M25 pre-commit check | Passed / passed |
 | Current inbound channel | Telegram |
@@ -151,6 +157,15 @@ Phase 1 also established structured safe logging, request IDs, and a small appli
 | 27 | Confidence Engine | COMPLETE | Pure unique delivered-information coverage, derived score/range, and normal demo gate. |
 | 28 | Course Context Switching | **DEFERRED** | Out of current demo scope. |
 | 29 | Demo Rejection / Nurture / Stop | **DEFERRED** | Out of current demo scope. |
+
+### Phase 5 - Knowledge & RAG - ACTIVE
+
+| Module | Name | Status | Current architectural result |
+|---|---|---|---|
+| 30 | RAG Ingestion / Chunking | COMPLETE WITH ACCEPTED DEMO LIMITATION | Pure Doc 02 natural-heading chunks with provenance, mixed knowledge classes, and TBD retrieval exclusion. |
+| 31 | Embeddings / Storage | PLANNED | Embeddings and knowledge-base writes. |
+| 32 | RAG Retrieval | PLANNED | Runtime retrieval. |
+| 33 | Structured DB / RAG Context Merge | PLANNED | Structured exact facts remain above RAG explanation. |
 
 ## 5. Current End-to-End Runtime
 
@@ -740,6 +755,8 @@ If routed, M25 derives and returns a typed `ConversationState` snapshot from the
 
 The existing `knowledge_base` repository is not queried as fake RAG.
 
+M30 is a pure, read-only ingestion boundary for only `02_SkillUp_RAG_Deep_Course_Knowledge.md`: natural heading chunks retain provenance and all applicable source classes, while TBD-only chunks are excluded from normal retrieval. It performs no embedding, knowledge-base write, or runtime retrieval.
+
 ### Tool source
 
 - No requests -> `not_required` and an empty request list.
@@ -973,7 +990,7 @@ The known `MODULE_TYPELESS_PACKAGE_JSON` warning is non-failing.
 - M27 derives confidence read-only from persisted coverage; no current response path automatically records coverage.
 - No course-switching behavior exists; M28 is deferred from the current demo.
 - No demo rejection/nurture/stop engine exists; M29 is deferred from the current demo.
-- RAG retrieval, embeddings generation, and vector search do not exist.
+- M30 has deterministic Doc 02-only ingestion/chunking with provenance and TBD retrieval exclusion; it has no embedding generation, database write, vector search, or runtime retrieval. Natural heading boundaries take priority over the approximate 300–700 word guidance. The generic `/analytics/i` metadata rule currently leaks `marketing_analytics` into Data Analytics chunks; this may reduce future retrieval metadata precision, correction is deferred, and M32 must not assume that metadata is perfectly isolated.
 - Tool requests are symbolic/deferred only.
 - No demo availability execution, document resolution, location resolution, or booking execution exists.
 - No response planning, style engine, few-shot selection, generator, or verifier exists.
@@ -994,6 +1011,10 @@ The current Phase 4 scope is:
 | M27 | COMPLETE | Explicit deterministic coverage, score/range, and demo gate handling separate from provider prose. |
 | M28 | **DEFERRED** | Course Context Switching is out of current demo scope. |
 | M29 | **DEFERRED** | Demo Rejection / Nurture / Stop is out of current demo scope. |
+| M30 | COMPLETE WITH ACCEPTED DEMO LIMITATION | Pure Doc 02-only heading ingestion/chunking; no embedding, storage, or retrieval. |
+| M31 | PLANNED | Embeddings and storage. |
+| M32 | PLANNED | Runtime retrieval. |
+| M33 | PLANNED | Structured DB / RAG context merge. |
 
 M24, M25, M26, and M27 are complete. The remaining rows do not authorize speculative fields, writes, or runtime behavior.
 
