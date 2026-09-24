@@ -4,6 +4,7 @@ import type { SemanticNormalizationResult } from "../types/semantic-normalizatio
 import type { TurnAnalysis } from "../types/turn-analysis.ts";
 import type { ConversationState } from "../state/conversation-state.ts";
 import type { SalesDecision } from "../sales-logic/sales-types.ts";
+import type { ConfidenceSnapshot } from "../confidence/types.ts";
 import type {
   Branch,
   Conversation,
@@ -78,5 +79,6 @@ export type OrchestrationHandoff = Readonly<{
   resolvedLanguage: ResolvedLanguage;
   queryRoute: QueryRoute;
   sources: OrchestrationSources;
+  confidence: ConfidenceSnapshot;
   salesDecision: SalesDecision;
 }>;

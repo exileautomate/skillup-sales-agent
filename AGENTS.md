@@ -29,11 +29,11 @@ Voice metadata is normalized and identity is persisted, but voice remains unsupp
 | Phase 1 | Foundation, Telegram, deployment | COMPLETE |
 | Phase 2 | Database foundation | COMPLETE FOR APPROVED DEMO SCOPE |
 | Phase 3 | Input and intelligence foundation | COMPLETE |
-| Phase 4 | Business logic, memory, state, and confidence | ACTIVE — M24 COMPLETE; M25 COMPLETE; M26 COMPLETE; M27 NEXT |
+| Phase 4 | Business logic, memory, state, and confidence | ACTIVE — M24 COMPLETE; M25 COMPLETE; M26 COMPLETE; M27 COMPLETE |
 
 Last committed M24 checkpoint: `7676b4b65542a26de459691a9630a6053aa3bebf`.
 
-Active Phase 4 scope: **M24 Lead Memory — COMPLETE; M25 Conversation State — COMPLETE; M26 Business / Sales Logic — COMPLETE; M27 Confidence Engine — NEXT**.
+Active Phase 4 scope: **M24 Lead Memory — COMPLETE; M25 Conversation State — COMPLETE; M26 Business / Sales Logic — COMPLETE; M27 Confidence Engine — COMPLETE**.
 
 Deferred from the current demo: **M28 Course Context Switching, M29 Demo Rejection / Nurture / Stop**.
 
@@ -88,6 +88,7 @@ src/core/process/process-message.ts
        -> resolveLanguage(...)
        -> routeQuery(turnAnalysis)
        -> load available structured sources / mark deferred sources
+       -> parse persisted M27 confidence coverage and derive score/range
        -> decideSalesAction(...) from trusted analysis, memory, state, and sources
        -> persist the approved Lead status and M25 Conversation state patch
        -> return OrchestrationHandoff
@@ -128,6 +129,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | Text orchestration | `orchestrateTextTurn` | `src/core/orchestration/orchestrate-text-turn.ts` | Coordinates stages and currently available sources. |
 | Handoff/source types | `OrchestrationHandoff`, `SourceLoad` | `src/core/orchestration/types.ts` | Trusted internal handoff; explicit source status. |
 | Business / Sales Logic | `decideSalesAction`, `SalesDecision` | `src/core/sales-logic/decide-sales-action.ts`, `src/core/sales-logic/sales-types.ts` | Pure deterministic obligations, permissions, qualification, demo, and booking-preparation decisions. |
+| Confidence Engine | `getConfidenceSnapshot`, `evaluateDemoGate` | `src/core/confidence/confidence-engine.ts` | Pure unique delivered-information coverage, derived score/range, and demo gate math. |
 | Course reads | `getCourseById`, `getCourseByInternalName`, `listCourses` | `src/lib/db/repositories/courses.ts` | Exact structured course facts. |
 | Branch reads | `getBranchByName`, `listBranches`, `getActiveBranchesForCourse` | `src/lib/db/repositories/branches.ts` | Branch and course-branch mapping evidence. |
 | Lead repository | `findLeadByChannelUserId`, `createLead`, `updateLead` | `src/lib/db/repositories/leads.ts` | Repository primitives; Module 23 does not update Lead. |
@@ -175,7 +177,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | M24 | Lead Memory | **COMPLETE**; persists approved stable explicit facts only. |
 | M25 | Conversation State | COMPLETE; typed workflow snapshot, controlled persistence, and initial-course establishment only. |
 | M26 | Business / Sales Logic | **COMPLETE**; deterministic decision and persistence integration complete. |
-| M27 | Confidence Engine | **NEXT**; not implemented. |
+| M27 | Confidence Engine | **COMPLETE**; unique delivered-information coverage, derived score/range, and demo gate math. |
 | M28 | Course Context Switching | **DEFERRED** from the current demo. |
 | M29 | Demo Rejection / Nurture / Stop | **DEFERRED** from the current demo. |
 
@@ -215,7 +217,7 @@ LLM knowledge is outside this authority hierarchy and is never business truth.
 | Memory | Stable student information | M24 persists approved explicit Lead facts; the updated Lead may be handed off read-only. |
 | State | Temporary workflow context | M25 exposes a typed snapshot; controlled persistence is available for future trusted decisions. |
 
-M26 now consumes these sources after loading, returns `SalesDecision`, and applies only its approved Lead-status and M25 state patches. Normal proactive demo remains blocked pending M27. Course switching remains deferred to M28. Persistent nurture/rejection/stop transitions remain deferred to M29. Booking and tool execution remain absent.
+M27 parses persisted coverage read-only, derives its 21-point score/range, and supplies M26's normal demo gate. Coverage is informational coverage already delivered to the student, never purchase probability; no current runtime path marks coverage because verified response delivery does not exist. Future verified delivery may use M27's M25-compatible confidence patch. Course switching remains deferred to M28. Persistent nurture/rejection/stop transitions remain deferred to M29. Booking and tool execution remain absent.
 
 ## 9. Database / Persistence Map
 
@@ -287,9 +289,8 @@ The Node test runner may emit the known non-failing `MODULE_TYPELESS_PACKAGE_JSO
 
 - Message persistence and recent-message history; `recentLanguage` is currently always `null`.
 - RLS/database security baseline.
-- M26 Business / Sales Logic is complete; M27 Confidence Engine is next and not implemented.
-- No M27 confidence scoring or normal proactive-demo gate calculation.
-- Confidence Engine.
+- M27 Confidence Engine is complete. It derives unique delivered-information coverage (maximum 21), not purchase probability; the normal demo gate requires total 11, course 2, fees 2, and placement 2, while strong intent bypasses confidence only.
+- No current path automatically marks coverage because response generation, delivery verification, and a real student-facing answer remain absent.
 - Course Context Switching behavior (M28 deferred from current demo).
 - Demo rejection/nurture/stop behavior (M29 deferred from current demo).
 - RAG ingestion/retrieval, embeddings, vector search, chunk selection, and source merge.

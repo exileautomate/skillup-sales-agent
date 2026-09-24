@@ -7,11 +7,11 @@
 | Repository | `https://github.com/exileautomate/skillup-sales-agent.git` |
 | Branch | `main` |
 | Committed M24 checkpoint | `7676b4b65542a26de459691a9630a6053aa3bebf` |
-| Current Phase 4 checkpoint | M26 — Business / Sales Logic — COMPLETE |
+| Current Phase 4 checkpoint | M27 — Confidence Engine — COMPLETE |
 | M24 status | COMPLETE |
 | M25 status | COMPLETE |
 | M26 status | COMPLETE |
-| M27 status | NEXT |
+| M27 status | COMPLETE |
 | M28 status | DEFERRED |
 | M29 status | DEFERRED |
 | Final M25 pre-commit regression | 198 passed, 0 failed |
@@ -22,7 +22,7 @@
 
 The system currently has a working Telegram transport, persistent Lead and Conversation identity, conservative explicit-fact Lead Memory, typed M25 Conversation State with safe initial-course establishment, structured course/branch data, two constrained OpenAI analysis stages, deterministic language resolution, deterministic source routing, deterministic Business / Sales Logic with typed `SalesDecision`, approved Lead-status and Conversation-state persistence, and an orchestration handoff carrying that decision.
 
-It does not yet have the M27 Confidence Engine or normal confidence-gate calculation, M28 persistent course switching, M29 persistent rejection/nurture/stop transitions, live tool execution, booking execution or confirmation, RAG retrieval, or a real student-facing business answer and verifier.
+It now has a deterministic M27 Confidence Engine for unique delivered-information coverage, derived score/range, and the normal demo confidence gate. It does not yet have M28 persistent course switching, M29 persistent rejection/nurture/stop transitions, live tool execution, booking execution or confirmation, RAG retrieval, or a real student-facing business answer and verifier.
 
 ## 2. Product / System Scope
 
@@ -47,7 +47,7 @@ Saleel is the SkillUp education sales agent persona. The current system can:
 
 The current system intentionally cannot yet:
 
-- calculate M27 confidence or the normal confidence gate;
+- mark new confidence coverage automatically: current required actions and loaded sources do not prove delivery;
 - persist M28 course switches or M29 rejection, nurture, or stop transitions;
 - execute live tools, check live availability, create or confirm bookings, or retrieve RAG knowledge;
 - generate a factual student-facing business response;
@@ -148,7 +148,7 @@ Phase 1 also established structured safe logging, request IDs, and a small appli
 | 24 | Lead Memory | COMPLETE | Conservative explicit-fact Lead updates integrated after TurnAnalysis. |
 | 25 | Conversation State | COMPLETE | Typed workflow snapshot, controlled persistence, and safe initial-course establishment. |
 | 26 | Business / Sales Logic | COMPLETE | Deterministic decision and persistence integration complete. |
-| 27 | Confidence Engine | NEXT | Not implemented; active next scope. |
+| 27 | Confidence Engine | COMPLETE | Pure unique delivered-information coverage, derived score/range, and normal demo gate. |
 | 28 | Course Context Switching | **DEFERRED** | Out of current demo scope. |
 | 29 | Demo Rejection / Nurture / Stop | **DEFERRED** | Out of current demo scope. |
 
@@ -194,6 +194,7 @@ NormalizedTextInboundMessage
         -> resolveLanguage(...)
        -> routeQuery(turnAnalysis)
        -> load structured sources / build deferred markers
+       -> parse persisted confidence coverage / derive score and range
        -> decideSalesAction(...) from trusted analysis and sources
        -> apply the approved Lead status and M25 Conversation state patch
        -> return OrchestrationHandoff
@@ -645,7 +646,7 @@ It coordinates:
 11. approved Lead-status and M25 Conversation-state persistence;
 12. handoff construction.
 
-It coordinates, but does not inline, M26 eligibility, qualification, objection, demo, and booking-preparation rules. It contains no confidence scoring, tool execution, response-writing, or style rules.
+It coordinates, but does not inline, M26 eligibility, qualification, objection, demo, and booking-preparation rules or M27 confidence math. It contains no tool execution, response-writing, or style rules.
 
 ### Read-only context assembly
 
@@ -667,6 +668,7 @@ It coordinates, but does not inline, M26 eligibility, qualification, objection, 
 - `resolvedLanguage`;
 - `queryRoute`;
 - `sources`.
+- `confidence` (`OrchestrationHandoff.confidence`), the trusted M27 snapshot containing parsed `ConfidenceState`, derived `ConfidenceScore`, and derived confidence range;
 - `salesDecision` (`OrchestrationHandoff.salesDecision`), the trusted internal M26 business output;
 
 The source bundle contains:
@@ -816,9 +818,9 @@ Responsibilities:
 - **Tools**: live checks, assets, and later actions.
 - **LLM**: language understanding within strict contracts; never fee/eligibility/availability truth.
 
-Current implementation loads structured DB facts, persists conservative M24 Lead memory, applies the M25 state boundary, runs pure M26 Business / Sales Logic, persists approved M26 status/state updates, exposes the updated rows plus `SalesDecision` in the handoff, and defers RAG/tool execution.
+Current implementation loads structured DB facts, persists conservative M24 Lead memory, applies the M25 state boundary, parses persisted M27 coverage read-only, derives its 21-point score/range, runs pure M26 Business / Sales Logic, persists approved M26 status/state updates, exposes the updated rows plus `SalesDecision` and trusted confidence snapshot in the handoff, and defers RAG/tool execution.
 
-M26 uses exactly six primary sales groups and closed action/reason vocabularies. Its exhaustive intent map preserves all direct answer obligations. Qualification is deterministic for the approved Data Analytics, Digital Marketing, and Accounting cases. Normal proactive demo stays blocked behind `CONFIDENCE_GATE_PENDING` until M27; only strong explicit demo intent can bypass that missing gate, and it still requires a canonical course, qualification, and structured `demo_available === true`. Booking support stops at one-field-at-a-time preparation or a symbolic availability request—no booking is created or confirmed.
+M27 coverage records only unique information already delivered to the student, never purchase probability, planned answers, intents, or loaded sources. Its normal demo gate requires total 11, course 2, fees 2, and placement 2; strong explicit demo intent bypasses confidence only and still requires a canonical course, qualification, structured `demo_available === true`, and no existing stop state. Current placeholder delivery never marks coverage; a later verified response pipeline must explicitly apply M27 coverage through the M25 state boundary.
 
 M26 deliberately does not switch persisted course context (M28), mutate rejection/nurture/stop state (M29), calculate confidence (M27), execute tools, or generate response wording.
 
@@ -967,9 +969,8 @@ The known `MODULE_TYPELESS_PACKAGE_JSON` warning is non-failing.
 - M16 was skipped: no message table, recent history, or persisted transcript.
 - `recentLanguage` is always `null` in current orchestration.
 - M17 was skipped: no RLS baseline.
-- M26 Business / Sales Logic is complete; M27 Confidence Engine is next and not implemented.
-- Normal proactive demo cannot become ready until M27 supplies its trusted gate.
-- No confidence engine exists.
+- M26 Business / Sales Logic is complete; M27 Confidence Engine is complete.
+- M27 derives confidence read-only from persisted coverage; no current response path automatically records coverage.
 - No course-switching behavior exists; M28 is deferred from the current demo.
 - No demo rejection/nurture/stop engine exists; M29 is deferred from the current demo.
 - RAG retrieval, embeddings generation, and vector search do not exist.
@@ -990,11 +991,11 @@ The current Phase 4 scope is:
 | M24 | COMPLETE | Stable student facts; do not mix with current-turn extraction or decisions. |
 | M25 | COMPLETE | Temporary workflow state, controlled updates, and initial-course establishment only. |
 | M26 | COMPLETE | Deterministic qualification/actions from trusted handoff sources. |
-| M27 | NEXT | Explicit confidence handling separate from provider prose; not implemented. |
+| M27 | COMPLETE | Explicit deterministic coverage, score/range, and demo gate handling separate from provider prose. |
 | M28 | **DEFERRED** | Course Context Switching is out of current demo scope. |
 | M29 | **DEFERRED** | Demo Rejection / Nurture / Stop is out of current demo scope. |
 
-M24, M25, and M26 are complete; M27 is next. The remaining rows do not authorize speculative fields, writes, or runtime behavior.
+M24, M25, M26, and M27 are complete. The remaining rows do not authorize speculative fields, writes, or runtime behavior.
 
 ## 26. Codebase Navigation Map
 

@@ -5,6 +5,7 @@ import { decideSalesAction } from "../src/core/sales-logic/decide-sales-action.t
 import { INTENT_ACTION_OBLIGATIONS } from "../src/core/sales-logic/intent-obligations.ts";
 import { TURN_INTENTS } from "../src/core/types/turn-analysis.ts";
 import { routeQuery } from "../src/core/routing/query-router.ts";
+import { getConfidenceSnapshot } from "../src/core/confidence/confidence-engine.ts";
 
 function lead(overrides = {}) {
   return {
@@ -196,6 +197,9 @@ function decide(overrides = {}) {
     queryRoute,
     sources:
       overrides.sources ?? defaultSources(analyzedTurn, queryRoute, storedCourse),
+    confidence:
+      overrides.confidence ??
+      getConfidenceSnapshot(conversation(overrides.conversation).confidence_state_json),
   });
 }
 
@@ -359,13 +363,32 @@ test("demo hesitation does not mutate rejection count or push state", () => {
   assert.equal(result.conversationStatePatch.demo_push_status, undefined);
 });
 
-test("positive interest cannot pass the unimplemented M27 confidence gate", () => {
+test("positive interest below the M27 confidence gate remains blocked", () => {
   const result = decide({
     turn: { intents: ["course_overview"], salesSignal: "positive_interest" },
   });
-  assert.ok(result.reasonCodes.includes("CONFIDENCE_GATE_PENDING"));
+  assert.ok(result.reasonCodes.includes("DEMO_GATE_NOT_READY"));
   assert.ok(result.blockedActions.includes("offer_demo"));
   assert.notEqual(result.nextStage, "DEMO_READY");
+});
+
+test("positive interest with trusted qualifying coverage permits normal demo progression", () => {
+  const result = decide({
+    lead: { qualification: "Bachelor degree completed" },
+    turn: { intents: ["course_overview"], salesSignal: "positive_interest" },
+    confidence: getConfidenceSnapshot({
+      course: { structure: true, whatLearn: true },
+      fees: { feeBasics: true, totalClarity: true },
+      placement: { assistance: true, supportProcess: true },
+      internship: { availabilityDuration: true, nature: true, process: true },
+      branches: { availability: true, location: true },
+    }),
+  });
+  assert.ok(result.reasonCodes.includes("DEMO_GATE_READY"));
+  assert.ok(result.allowedActions.includes("offer_demo"));
+  assert.ok(!result.blockedActions.includes("offer_demo"));
+  assert.equal(result.nextStage, "DEMO_READY");
+  assert.ok(result.requiredActions.includes("answer_course"));
 });
 
 test("strong explicit demo intent bypasses confidence only when qualified and available", () => {
@@ -577,6 +600,7 @@ test("decision output is deduplicated, deterministic, and does not mutate inputs
     existingConversationCourse: null,
     queryRoute,
     sources,
+    confidence: getConfidenceSnapshot(storedConversation.confidence_state_json),
   });
 
   const first = decideSalesAction(input);
@@ -612,6 +636,7 @@ test("missing optional structured truth returns a safe decision instead of throw
     existingConversationCourse: null,
     queryRoute,
     sources,
+    confidence: getConfidenceSnapshot(conversation().confidence_state_json),
   });
   assert.ok(result.requiredActions.includes("answer_fee"));
   assert.ok(result.reasonCodes.includes("STRUCTURED_SOURCE_UNAVAILABLE"));

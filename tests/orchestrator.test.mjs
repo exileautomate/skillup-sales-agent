@@ -10,6 +10,7 @@ import { applyLeadMemory } from "../src/core/memory/lead-memory.ts";
 import { applyConversationState } from "../src/core/state/conversation-state.ts";
 import { persistConversationStatePatch } from "../src/core/state/conversation-state.ts";
 import { resolveLanguage } from "../src/core/language/language-resolver.ts";
+import { getConfidenceSnapshot } from "../src/core/confidence/confidence-engine.ts";
 import { processMessage } from "../src/core/process/process-message.ts";
 import {
   normalizeSemanticMeaning,
@@ -1000,6 +1001,94 @@ test("M26 persists one Lead status update and one M25 state patch into the final
   assert.equal(handoff.sources.stateSource.data.currentSalesStage, "BOOKING");
   assert.equal(handoff.salesDecision.salesGroup, "booking_progression");
   assert.equal(handoff.salesDecision.followUpQuestionKey, "booking_name");
+});
+
+test("M27 parses persisted confidence once, passes trusted output to M26, and does not write coverage", async () => {
+  const storedConversation = conversation({
+    confidence_state_json: { course: { structure: true, whatLearn: true } },
+  });
+  const trustedConfidence = getConfidenceSnapshot(storedConversation.confidence_state_json);
+  let confidenceReads = 0;
+  let conversationWrites = 0;
+
+  const handoff = await orchestrateTextTurn(
+    { message: textMessage(), lead: lead(), conversation: storedConversation },
+    dependencies({
+      getConfidenceSnapshot: (raw) => {
+        confidenceReads += 1;
+        assert.strictEqual(raw, storedConversation.confidence_state_json);
+        return trustedConfidence;
+      },
+      decideSalesAction: (input) => {
+        assert.strictEqual(input.confidence, trustedConfidence);
+        return salesDecision();
+      },
+      updateConversation: async () => {
+        conversationWrites += 1;
+        throw new Error("M27 must not write confidence coverage");
+      },
+    }),
+  );
+
+  assert.equal(confidenceReads, 1);
+  assert.equal(conversationWrites, 0);
+  assert.strictEqual(handoff.confidence, trustedConfidence);
+  assert.strictEqual(handoff.conversation, storedConversation);
+});
+
+test("M27 persisted qualifying coverage permits normal demo progression without a confidence write", async () => {
+  const storedConversation = conversation({
+    confidence_state_json: {
+      course: { structure: true, whatLearn: true },
+      fees: { feeBasics: true, totalClarity: true },
+      placement: { assistance: true, supportProcess: true },
+      internship: { availabilityDuration: true, nature: true, process: true },
+      branches: { availability: true, location: true },
+    },
+  });
+  const patches = [];
+  const handoff = await orchestrateTextTurn(
+    {
+      message: textMessage(),
+      lead: lead({ qualification: "Bachelor degree completed" }),
+      conversation: storedConversation,
+    },
+    dependencies({
+      analyzeTurn: async () =>
+        turnAnalysis({ intents: ["course_overview"], salesSignal: "positive_interest" }),
+      routeQuery: () => queryRoute({ needsStructuredCourseFacts: true }),
+      getCourseByInternalName: async () => course(),
+      updateConversation: async (id, patch) => {
+        patches.push(patch);
+        return conversation({ id, ...patch });
+      },
+    }),
+  );
+
+  assert.equal(handoff.confidence.score.total, 11);
+  assert.ok(handoff.salesDecision.reasonCodes.includes("DEMO_GATE_READY"));
+  assert.ok(handoff.salesDecision.allowedActions.includes("offer_demo"));
+  assert.ok(patches.every((patch) => patch.confidence_state_json === undefined));
+});
+
+test("M27 empty persisted confidence keeps normal proactive demo blocked", async () => {
+  const handoff = await orchestrateTextTurn(
+    {
+      message: textMessage(),
+      lead: lead({ qualification: "Bachelor degree completed" }),
+      conversation: conversation({ confidence_state_json: null }),
+    },
+    dependencies({
+      analyzeTurn: async () =>
+        turnAnalysis({ intents: ["course_overview"], salesSignal: "positive_interest" }),
+      routeQuery: () => queryRoute({ needsStructuredCourseFacts: true }),
+      getCourseByInternalName: async () => course(),
+    }),
+  );
+
+  assert.equal(handoff.confidence.score.total, 0);
+  assert.ok(handoff.salesDecision.reasonCodes.includes("DEMO_GATE_NOT_READY"));
+  assert.ok(handoff.salesDecision.blockedActions.includes("offer_demo"));
 });
 
 test("M26 persistence failures propagate without a successful handoff", async () => {

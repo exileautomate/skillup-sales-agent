@@ -12,6 +12,7 @@ import {
   persistConversationStatePatch,
 } from "../state/conversation-state.ts";
 import { decideSalesAction } from "../sales-logic/decide-sales-action.ts";
+import { getConfidenceSnapshot } from "../confidence/confidence-engine.ts";
 import { routeQuery } from "../routing/query-router.ts";
 import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import {
@@ -55,6 +56,7 @@ export type OrchestrateTextTurnDependencies = Readonly<{
   applyConversationState?: typeof applyConversationState;
   persistConversationStatePatch?: typeof persistConversationStatePatch;
   decideSalesAction?: typeof decideSalesAction;
+  getConfidenceSnapshot?: typeof getConfidenceSnapshot;
   resolveLanguage?: typeof resolveLanguage;
   routeQuery?: typeof routeQuery;
   getCourseById?: typeof getCourseById;
@@ -84,6 +86,7 @@ const defaultDependencies: ResolvedDependencies = {
   applyConversationState,
   persistConversationStatePatch,
   decideSalesAction,
+  getConfidenceSnapshot,
   resolveLanguage,
   routeQuery,
   getCourseById,
@@ -475,6 +478,9 @@ export async function orchestrateTextTurn(
     existingConversationCourse,
     resolved,
   );
+  const confidence = resolved.getConfidenceSnapshot(
+    currentConversation.confidence_state_json,
+  );
   const salesDecision = resolved.decideSalesAction({
     semanticNormalization,
     turnAnalysis,
@@ -483,6 +489,7 @@ export async function orchestrateTextTurn(
     existingConversationCourse,
     queryRoute,
     sources: loadedSources,
+    confidence,
   });
   const businessLead =
     salesDecision.leadStatusUpdate !== null &&
@@ -511,6 +518,7 @@ export async function orchestrateTextTurn(
     resolvedLanguage,
     queryRoute,
     sources,
+    confidence,
     salesDecision,
   };
 }

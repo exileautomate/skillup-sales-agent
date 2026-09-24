@@ -12,6 +12,10 @@ import type {
 } from "../../lib/db/repositories/types.ts";
 import type { ConversationStateUpdatePatch } from "../state/conversation-state.ts";
 import {
+  evaluateDemoGate,
+} from "../confidence/confidence-engine.ts";
+import type { ConfidenceSnapshot } from "../confidence/types.ts";
+import {
   buildDemoBookingProgress,
   nextMissingBookingField,
 } from "./booking-progress.ts";
@@ -34,6 +38,7 @@ export type SalesDecisionInput = Readonly<{
   existingConversationCourse: Readonly<Course> | null;
   queryRoute: Readonly<QueryRoute>;
   sources: OrchestrationSources;
+  confidence: Readonly<ConfidenceSnapshot>;
 }>;
 
 const QUALIFICATION_INTENTS = new Set([
@@ -463,16 +468,39 @@ export function decideSalesAction(input: SalesDecisionInput): SalesDecision {
     addAllUnique(blockedActions, ["offer_demo", "proactive_sales_push"]);
   }
 
+  const courseFacts =
+    input.sources.structuredCourseFacts.status === "loaded"
+      ? input.sources.structuredCourseFacts.data
+      : null;
+  const demoGate = evaluateDemoGate({
+    confidence: input.confidence.score,
+    eligible: qualificationDecision?.status === "eligible",
+    demoAvailable: courseFacts?.demo_available === true,
+    strongDemoIntent,
+    demoPushStatus: input.conversation.demo_push_status,
+  });
+
   if (
     input.turnAnalysis.salesSignal === "positive_interest" &&
     !strongDemoIntent &&
     !stopSignal
   ) {
-    addUnique(reasonCodes, "CONFIDENCE_GATE_PENDING");
-    addUnique(blockedActions, "offer_demo");
+    if (demoGate.allowed && demoGate.path === "normal_confidence") {
+      salesGroup = "demo_progression";
+      desiredStage = "DEMO_READY";
+      addUnique(allowedActions, "offer_demo");
+      addUnique(reasonCodes, "DEMO_GATE_READY");
+    } else {
+      addUnique(reasonCodes, "DEMO_GATE_NOT_READY");
+      addUnique(blockedActions, "offer_demo");
+    }
   }
 
-  if (directAnswer && !strongDemoIntent) {
+  if (
+    directAnswer &&
+    !strongDemoIntent &&
+    !(input.turnAnalysis.salesSignal === "positive_interest" && demoGate.allowed)
+  ) {
     addUnique(blockedActions, "offer_demo");
   }
 
@@ -483,21 +511,13 @@ export function decideSalesAction(input: SalesDecisionInput): SalesDecision {
       followUpQuestionKey = "course_interest";
       conversationStatePatch.pending_question = "course_interest";
     }
-    const courseFacts =
-      input.sources.structuredCourseFacts.status === "loaded"
-        ? input.sources.structuredCourseFacts.data
-        : null;
-    const qualified = qualificationDecision?.status === "eligible";
-    const demoAvailable = courseFacts?.demo_available === true;
     const progressionBlocked =
       courseSwitchDeferred ||
       criticalAmbiguity ||
       stopSignal ||
-      demoStopped ||
+      !demoGate.allowed ||
       input.turnAnalysis.course === null ||
-      courseFacts === null ||
-      !qualified ||
-      !demoAvailable;
+      courseFacts === null;
 
     if (courseFacts !== null && courseFacts.demo_available === false) {
       addUnique(requiredActions, "answer_demo_availability");
