@@ -3,6 +3,7 @@ import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import type { SemanticNormalizationResult } from "../types/semantic-normalization.ts";
 import type { TurnAnalysis } from "../types/turn-analysis.ts";
 import type { ConversationState } from "../state/conversation-state.ts";
+import type { SalesDecision } from "../sales-logic/sales-types.ts";
 import type {
   Branch,
   Conversation,
@@ -77,4 +78,5 @@ export type OrchestrationHandoff = Readonly<{
   resolvedLanguage: ResolvedLanguage;
   queryRoute: QueryRoute;
   sources: OrchestrationSources;
+  salesDecision: SalesDecision;
 }>;

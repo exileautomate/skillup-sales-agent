@@ -8,6 +8,7 @@ import {
 } from "../src/core/orchestration/orchestrate-text-turn.ts";
 import { applyLeadMemory } from "../src/core/memory/lead-memory.ts";
 import { applyConversationState } from "../src/core/state/conversation-state.ts";
+import { persistConversationStatePatch } from "../src/core/state/conversation-state.ts";
 import { resolveLanguage } from "../src/core/language/language-resolver.ts";
 import { processMessage } from "../src/core/process/process-message.ts";
 import {
@@ -186,6 +187,23 @@ function queryRoute(overrides = {}) {
   };
 }
 
+function salesDecision(overrides = {}) {
+  return {
+    salesGroup: "answer_educate",
+    requiredActions: [],
+    allowedActions: [],
+    blockedActions: [],
+    reasonCodes: [],
+    nextStage: null,
+    conversationStatePatch: {},
+    leadStatusUpdate: null,
+    toolRequests: [],
+    followUpQuestionKey: null,
+    qualificationDecision: null,
+    ...overrides,
+  };
+}
+
 function dependencies(overrides = {}) {
   return {
     normalizeSemanticMeaning: async () => semanticNormalization(),
@@ -205,6 +223,18 @@ function dependencies(overrides = {}) {
     getBranchByName: async () => null,
     getActiveBranchesForCourse: async () => [],
     listBranches: async () => [],
+    updateLead: async (id, patch) => lead({ id, ...patch }),
+    updateConversation: async (id, patch) => conversation({ id, ...patch }),
+    persistConversationStatePatch: async (storedConversation, patch) => {
+      const changedFields = Object.keys(patch);
+      return {
+        conversation:
+          changedFields.length === 0
+            ? storedConversation
+            : { ...storedConversation, ...patch },
+        changedFields,
+      };
+    },
     ...overrides,
   };
 }
@@ -267,6 +297,17 @@ test("processMessage coordinates the complete text-turn sequence", async () => {
         events.push("branch_source");
         return branch();
       },
+      decideSalesAction: (input) => {
+        events.push("sales_logic");
+        assert.equal(input.sources.structuredCourseFacts.status, "loaded");
+        assert.equal(input.sources.structuredBranchFacts.status, "loaded");
+        return salesDecision();
+      },
+      persistConversationStatePatch: async (stored, patch) => {
+        events.push("m26_state_persistence");
+        assert.deepEqual(patch, {});
+        return { conversation: stored, changedFields: [] };
+      },
     }),
   });
 
@@ -281,6 +322,8 @@ test("processMessage coordinates the complete text-turn sequence", async () => {
     "query_routing",
     "course_source",
     "branch_source",
+    "sales_logic",
+    "m26_state_persistence",
   ]);
   assert.deepEqual(result, {
     status: "completed",
@@ -813,7 +856,7 @@ test("passes Lead memory and the M25 Conversation State snapshot only when reque
   assert.strictEqual(handoff.sources.memorySource.data, storedLead);
   assert.deepEqual(handoff.sources.stateSource.data, {
     currentCourseId: null,
-    currentSalesStage: "NEW",
+    currentSalesStage: "COURSE_EDUCATION",
     qualificationStatus: "UNKNOWN",
     demoPushStatus: "NORMAL",
     demoRejectionCount: 0,
@@ -827,11 +870,16 @@ test("passes Lead memory and the M25 Conversation State snapshot only when reque
 
 test("uses the M25-updated Conversation and snapshot in the same-turn handoff", async () => {
   const storedConversation = conversation();
-  const updatedConversation = conversation({
+  const afterInitialCourse = conversation({
     current_course_id: "course-data-analytics",
     updated_at: "2026-09-23T10:00:00.000Z",
   });
-  let updateCalls = 0;
+  const afterBusinessState = conversation({
+    current_course_id: "course-data-analytics",
+    current_sales_stage: "COURSE_EDUCATION",
+    updated_at: "2026-09-23T10:01:00.000Z",
+  });
+  const updatePatches = [];
 
   const handoff = await orchestrateTextTurn(
     {
@@ -841,24 +889,29 @@ test("uses the M25-updated Conversation and snapshot in the same-turn handoff", 
     },
     dependencies({
       applyConversationState,
+      persistConversationStatePatch,
       routeQuery: () => queryRoute({ needsState: true }),
       getCourseByInternalName: async () => course(),
       updateConversation: async (id, patch) => {
-        updateCalls += 1;
         assert.equal(id, storedConversation.id);
-        assert.deepEqual(patch, { current_course_id: "course-data-analytics" });
-        return updatedConversation;
+        updatePatches.push(patch);
+        return updatePatches.length === 1
+          ? afterInitialCourse
+          : afterBusinessState;
       },
     }),
   );
 
-  assert.equal(updateCalls, 1);
-  assert.strictEqual(handoff.conversation, updatedConversation);
+  assert.deepEqual(updatePatches, [
+    { current_course_id: "course-data-analytics" },
+    { current_sales_stage: "COURSE_EDUCATION" },
+  ]);
+  assert.strictEqual(handoff.conversation, afterBusinessState);
   assert.deepEqual(handoff.sources.stateSource, {
     status: "loaded",
     data: {
       currentCourseId: "course-data-analytics",
-      currentSalesStage: "NEW",
+      currentSalesStage: "COURSE_EDUCATION",
       qualificationStatus: "UNKNOWN",
       demoPushStatus: "NORMAL",
       demoRejectionCount: 0,
@@ -867,6 +920,132 @@ test("uses the M25-updated Conversation and snapshot in the same-turn handoff", 
       confidenceState: {},
     },
   });
+});
+
+test("M26 persists one Lead status update and one M25 state patch into the final handoff", async () => {
+  const qualifiedLead = lead({ qualification: "B.Sc completed" });
+  const persistedLead = lead({
+    qualification: "B.Sc completed",
+    lead_status: "QUALIFIED",
+    updated_at: "2026-09-23T11:00:00.000Z",
+  });
+  const persistedConversation = conversation({
+    current_sales_stage: "BOOKING",
+    qualification_status: "QUALIFIED",
+    pending_question: "booking_name",
+    booking_progress_json: {
+      name: null,
+      contact: null,
+      course: "data_analytics",
+      branch: null,
+      date: null,
+      time: null,
+      status: "COLLECTING",
+    },
+    updated_at: "2026-09-23T11:00:00.000Z",
+  });
+  const leadWrites = [];
+  const conversationWrites = [];
+
+  const handoff = await orchestrateTextTurn(
+    {
+      message: textMessage({ text: "Book a Data Analytics demo" }),
+      lead: qualifiedLead,
+      conversation: conversation(),
+    },
+    dependencies({
+      analyzeTurn: async () =>
+        turnAnalysis({
+          intents: ["booking_request"],
+          salesSignal: "booking_intent",
+        }),
+      routeQuery: () =>
+        queryRoute({
+          needsStructuredCourseFacts: true,
+          needsMemory: true,
+          needsState: true,
+        }),
+      getCourseByInternalName: async () => course(),
+      persistConversationStatePatch,
+      updateLead: async (id, patch) => {
+        leadWrites.push([id, patch]);
+        return persistedLead;
+      },
+      updateConversation: async (id, patch) => {
+        conversationWrites.push([id, patch]);
+        return persistedConversation;
+      },
+    }),
+  );
+
+  assert.deepEqual(leadWrites, [[qualifiedLead.id, { lead_status: "QUALIFIED" }]]);
+  assert.equal(conversationWrites.length, 1);
+  assert.deepEqual(conversationWrites[0][1], {
+    current_sales_stage: "BOOKING",
+    qualification_status: "QUALIFIED",
+    pending_question: "booking_name",
+    booking_progress_json: {
+      name: null,
+      contact: null,
+      course: "data_analytics",
+      branch: null,
+      date: null,
+      time: null,
+      status: "COLLECTING",
+    },
+  });
+  assert.strictEqual(handoff.lead, persistedLead);
+  assert.strictEqual(handoff.conversation, persistedConversation);
+  assert.strictEqual(handoff.sources.memorySource.data, persistedLead);
+  assert.equal(handoff.sources.stateSource.data.currentSalesStage, "BOOKING");
+  assert.equal(handoff.salesDecision.salesGroup, "booking_progression");
+  assert.equal(handoff.salesDecision.followUpQuestionKey, "booking_name");
+});
+
+test("M26 persistence failures propagate without a successful handoff", async () => {
+  const leadFailure = new Error("M26 lead status write failed");
+  let stateWritesAfterLeadFailure = 0;
+
+  await assert.rejects(
+    () =>
+      orchestrateTextTurn(
+        {
+          message: textMessage(),
+          lead: lead({ qualification: "B.Sc completed" }),
+          conversation: conversation(),
+        },
+        dependencies({
+          analyzeTurn: async () =>
+            turnAnalysis({ intents: ["qualification_statement"] }),
+          updateLead: async () => {
+            throw leadFailure;
+          },
+          persistConversationStatePatch: async () => {
+            stateWritesAfterLeadFailure += 1;
+            throw new Error("must not run");
+          },
+        }),
+      ),
+    (error) => error === leadFailure,
+  );
+  assert.equal(stateWritesAfterLeadFailure, 0);
+
+  const stateFailure = new Error("M26 conversation state write failed");
+  await assert.rejects(
+    () =>
+      orchestrateTextTurn(
+        { message: textMessage(), lead: lead(), conversation: conversation() },
+        dependencies({
+          routeQuery: () => queryRoute({ needsStructuredCourseFacts: true }),
+          getCourseByInternalName: async () => course(),
+          persistConversationStatePatch,
+          updateConversation: async () => {
+            throw stateFailure;
+          },
+        }),
+      ),
+    (error) => error === stateFailure,
+  );
 });
 
 test("marks RAG and symbolic tools deferred without fake results", async () => {
@@ -931,7 +1110,8 @@ test("preserves a multi-source handoff without booking execution", async () => {
     status: "not_required",
     requests: [],
   });
-  assert.equal(JSON.stringify(handoff).includes("create_demo_booking"), false);
+  assert.ok(handoff.salesDecision.blockedActions.includes("create_demo_booking"));
+  assert.ok(!handoff.salesDecision.requiredActions.includes("create_demo_booking"));
   assert.equal(JSON.stringify(handoff).includes("bookingConfirmed"), false);
 });
 

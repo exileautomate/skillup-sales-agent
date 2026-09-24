@@ -14,7 +14,7 @@ This is the fast operating manual for future Codex work. Read it before opening 
 
 ## 1. Project Purpose
 
-SkillUp is building **Saleel**, an AI-assisted education sales agent. The current runtime accepts Telegram updates, normalizes them into a channel-independent message, persists Lead and Conversation identity, analyzes text turns with OpenAI, resolves response language, routes required sources deterministically, loads the structured sources already available, and creates an internal orchestration handoff.
+SkillUp is building **Saleel**, an AI-assisted education sales agent. The current runtime accepts Telegram updates, normalizes them into a channel-independent message, persists Lead and Conversation identity, analyzes text turns with OpenAI, resolves response language, routes and loads required sources, runs deterministic Business / Sales Logic, persists approved Lead status and Conversation state changes, and creates an internal orchestration handoff.
 
 The real business-response pipeline does not exist yet. Successful text processing still returns the temporary deterministic Saleel message:
 
@@ -29,11 +29,11 @@ Voice metadata is normalized and identity is persisted, but voice remains unsupp
 | Phase 1 | Foundation, Telegram, deployment | COMPLETE |
 | Phase 2 | Database foundation | COMPLETE FOR APPROVED DEMO SCOPE |
 | Phase 3 | Input and intelligence foundation | COMPLETE |
-| Phase 4 | Business logic, memory, state, and confidence | ACTIVE — M24 COMPLETE; M25 COMPLETE; M26 NEXT |
+| Phase 4 | Business logic, memory, state, and confidence | ACTIVE — M24 COMPLETE; M25 COMPLETE; M26 COMPLETE; M27 NEXT |
 
 Last committed M24 checkpoint: `7676b4b65542a26de459691a9630a6053aa3bebf`.
 
-Active Phase 4 scope: **M24 Lead Memory — COMPLETE; M25 Conversation State — COMPLETE; M26 Business / Sales Logic — NEXT; M27 Confidence Engine — PLANNED**.
+Active Phase 4 scope: **M24 Lead Memory — COMPLETE; M25 Conversation State — COMPLETE; M26 Business / Sales Logic — COMPLETE; M27 Confidence Engine — NEXT**.
 
 Deferred from the current demo: **M28 Course Context Switching, M29 Demo Rejection / Nurture / Stop**.
 
@@ -88,6 +88,8 @@ src/core/process/process-message.ts
        -> resolveLanguage(...)
        -> routeQuery(turnAnalysis)
        -> load available structured sources / mark deferred sources
+       -> decideSalesAction(...) from trusted analysis, memory, state, and sources
+       -> persist the approved Lead status and M25 Conversation state patch
        -> return OrchestrationHandoff
   -> return temporary Saleel placeholder
 ```
@@ -125,6 +127,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | Route contract | `QueryRoute`, `QueryToolRequest` | `src/core/routing/types.ts` | Six-field source plan. |
 | Text orchestration | `orchestrateTextTurn` | `src/core/orchestration/orchestrate-text-turn.ts` | Coordinates stages and currently available sources. |
 | Handoff/source types | `OrchestrationHandoff`, `SourceLoad` | `src/core/orchestration/types.ts` | Trusted internal handoff; explicit source status. |
+| Business / Sales Logic | `decideSalesAction`, `SalesDecision` | `src/core/sales-logic/decide-sales-action.ts`, `src/core/sales-logic/sales-types.ts` | Pure deterministic obligations, permissions, qualification, demo, and booking-preparation decisions. |
 | Course reads | `getCourseById`, `getCourseByInternalName`, `listCourses` | `src/lib/db/repositories/courses.ts` | Exact structured course facts. |
 | Branch reads | `getBranchByName`, `listBranches`, `getActiveBranchesForCourse` | `src/lib/db/repositories/branches.ts` | Branch and course-branch mapping evidence. |
 | Lead repository | `findLeadByChannelUserId`, `createLead`, `updateLead` | `src/lib/db/repositories/leads.ts` | Repository primitives; Module 23 does not update Lead. |
@@ -171,8 +174,8 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | M23 | Orchestrator Expansion | Coordinates intelligence and available source loading. |
 | M24 | Lead Memory | **COMPLETE**; persists approved stable explicit facts only. |
 | M25 | Conversation State | COMPLETE; typed workflow snapshot, controlled persistence, and initial-course establishment only. |
-| M26 | Business / Sales Logic | NEXT. |
-| M27 | Confidence Engine | Active Phase 4 scope; not implemented. |
+| M26 | Business / Sales Logic | **COMPLETE**; deterministic decision and persistence integration complete. |
+| M27 | Confidence Engine | **NEXT**; not implemented. |
 | M28 | Course Context Switching | **DEFERRED** from the current demo. |
 | M29 | Demo Rejection / Nurture / Stop | **DEFERRED** from the current demo. |
 
@@ -187,6 +190,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 - `SourceLoad<T>` — `src/core/orchestration/types.ts`: `not_required`, `loaded`, `unresolved`, or `deferred`.
 - `CourseBranchMappingEvidence` — same file: course identity, optional requested branch name, and active course branches; no availability conclusion.
 - `OrchestrationHandoff` — same file: Lead, Conversation, normalized meaning, analysis, language, route, and source loads.
+- `SalesDecision` / `QualificationDecision` / `DemoBookingProgress` — `src/core/sales-logic/sales-types.ts`: trusted deterministic business output; never student-facing wording.
 - `ConversationState` / `ConversationStateUpdatePatch` — `src/core/state/conversation-state.ts`: typed temporary workflow state and approved-field-only persistence boundary.
 - Database row/input types — `src/lib/db/repositories/types.ts`: schema-aligned `Course`, `Branch`, `Lead`, `Conversation`, `DemoBooking`, and `KnowledgeBaseRecord`.
 
@@ -210,6 +214,8 @@ LLM knowledge is outside this authority hierarchy and is never business truth.
 | Approved RAG | Deep approved explanations | Deferred; route/source marker only. |
 | Memory | Stable student information | M24 persists approved explicit Lead facts; the updated Lead may be handed off read-only. |
 | State | Temporary workflow context | M25 exposes a typed snapshot; controlled persistence is available for future trusted decisions. |
+
+M26 now consumes these sources after loading, returns `SalesDecision`, and applies only its approved Lead-status and M25 state patches. Normal proactive demo remains blocked pending M27. Course switching remains deferred to M28. Persistent nurture/rejection/stop transitions remain deferred to M29. Booking and tool execution remain absent.
 
 ## 9. Database / Persistence Map
 
@@ -258,6 +264,7 @@ Current M25 pre-commit baseline: **198 passed, 0 failed**; TypeScript and produc
 | TurnAnalysis | `tests/turn-analysis.test.mjs` |
 | Lead Memory | `tests/lead-memory.test.mjs` |
 | Conversation State | `tests/conversation-state.test.mjs` |
+| Business / Sales Logic | `tests/sales-logic.test.mjs` |
 | Structured validation/repair | `tests/structured-output-validation.test.mjs` |
 | Query Router | `tests/query-router.test.mjs` |
 | Orchestration/source loading | `tests/orchestrator.test.mjs` |
@@ -280,9 +287,8 @@ The Node test runner may emit the known non-failing `MODULE_TYPELESS_PACKAGE_JSO
 
 - Message persistence and recent-message history; `recentLanguage` is currently always `null`.
 - RLS/database security baseline.
-- M25 Conversation State is COMPLETE; M26 Business / Sales Logic is NEXT; M27 Confidence Engine remains planned.
-- No M26 sales-stage, qualification, or booking progression decisions; no M27 confidence scoring.
-- Business/Sales Logic, qualification/eligibility decisions, sales groups, and objection handling.
+- M26 Business / Sales Logic is complete; M27 Confidence Engine is next and not implemented.
+- No M27 confidence scoring or normal proactive-demo gate calculation.
 - Confidence Engine.
 - Course Context Switching behavior (M28 deferred from current demo).
 - Demo rejection/nurture/stop behavior (M29 deferred from current demo).

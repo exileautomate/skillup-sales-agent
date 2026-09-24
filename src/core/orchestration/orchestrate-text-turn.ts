@@ -9,7 +9,9 @@ import { applyLeadMemory } from "../memory/lead-memory.ts";
 import {
   applyConversationState,
   getConversationState,
+  persistConversationStatePatch,
 } from "../state/conversation-state.ts";
+import { decideSalesAction } from "../sales-logic/decide-sales-action.ts";
 import { routeQuery } from "../routing/query-router.ts";
 import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import {
@@ -51,6 +53,8 @@ export type OrchestrateTextTurnDependencies = Readonly<{
   analyzeTurn?: typeof analyzeTurn;
   applyLeadMemory?: typeof applyLeadMemory;
   applyConversationState?: typeof applyConversationState;
+  persistConversationStatePatch?: typeof persistConversationStatePatch;
+  decideSalesAction?: typeof decideSalesAction;
   resolveLanguage?: typeof resolveLanguage;
   routeQuery?: typeof routeQuery;
   getCourseById?: typeof getCourseById;
@@ -78,6 +82,8 @@ const defaultDependencies: ResolvedDependencies = {
   analyzeTurn,
   applyLeadMemory,
   applyConversationState,
+  persistConversationStatePatch,
+  decideSalesAction,
   resolveLanguage,
   routeQuery,
   getCourseById,
@@ -384,6 +390,24 @@ async function loadSources(
   };
 }
 
+function refreshPersistedSources(
+  sources: OrchestrationSources,
+  lead: Readonly<Lead>,
+  conversation: Readonly<Conversation>,
+): OrchestrationSources {
+  return {
+    ...sources,
+    memorySource:
+      sources.memorySource.status === "loaded"
+        ? { status: "loaded", data: lead }
+        : sources.memorySource,
+    stateSource:
+      sources.stateSource.status === "loaded"
+        ? { status: "loaded", data: getConversationState(conversation) }
+        : sources.stateSource,
+  };
+}
+
 export async function orchestrateTextTurn(
   input: OrchestrateTextTurnInput,
   dependencies: OrchestrateTextTurnDependencies = {},
@@ -443,7 +467,7 @@ export async function orchestrateTextTurn(
   };
   const resolvedLanguage = resolved.resolveLanguage(languageResolverInput);
   const queryRoute = resolved.routeQuery(turnAnalysis);
-  const sources = await loadSources(
+  const loadedSources = await loadSources(
     currentLead,
     currentConversationState,
     turnAnalysis,
@@ -451,14 +475,42 @@ export async function orchestrateTextTurn(
     existingConversationCourse,
     resolved,
   );
-
-  return {
+  const salesDecision = resolved.decideSalesAction({
+    semanticNormalization,
+    turnAnalysis,
     lead: currentLead,
     conversation: currentConversation,
+    existingConversationCourse,
+    queryRoute,
+    sources: loadedSources,
+  });
+  const businessLead =
+    salesDecision.leadStatusUpdate !== null &&
+    salesDecision.leadStatusUpdate !== currentLead.lead_status
+      ? await resolved.updateLead(currentLead.id, {
+          lead_status: salesDecision.leadStatusUpdate,
+        })
+      : currentLead;
+  const businessStateResult = await resolved.persistConversationStatePatch(
+    currentConversation,
+    salesDecision.conversationStatePatch,
+    { updateConversation: resolved.updateConversation },
+  );
+  const businessConversation = businessStateResult.conversation;
+  const sources = refreshPersistedSources(
+    loadedSources,
+    businessLead,
+    businessConversation,
+  );
+
+  return {
+    lead: businessLead,
+    conversation: businessConversation,
     semanticNormalization,
     turnAnalysis,
     resolvedLanguage,
     queryRoute,
     sources,
+    salesDecision,
   };
 }

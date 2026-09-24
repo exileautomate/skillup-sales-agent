@@ -7,17 +7,22 @@
 | Repository | `https://github.com/exileautomate/skillup-sales-agent.git` |
 | Branch | `main` |
 | Committed M24 checkpoint | `7676b4b65542a26de459691a9630a6053aa3bebf` |
-| Current completed checkpoint | M24 — Lead Memory |
+| Current Phase 4 checkpoint | M26 — Business / Sales Logic — COMPLETE |
+| M24 status | COMPLETE |
 | M25 status | COMPLETE |
+| M26 status | COMPLETE |
+| M27 status | NEXT |
+| M28 status | DEFERRED |
+| M29 status | DEFERRED |
 | Final M25 pre-commit regression | 198 passed, 0 failed |
 | TypeScript/build at M25 pre-commit check | Passed / passed |
 | Current inbound channel | Telegram |
 | Current text output | Temporary deterministic Saleel placeholder |
 | Current voice output | Unsupported after Lead/Conversation persistence |
 
-The system currently has a working Telegram transport, persistent Lead and Conversation identity, conservative explicit-fact Lead Memory, typed M25 Conversation State with safe initial-course establishment, structured course/branch data, two constrained OpenAI analysis stages, deterministic language resolution, deterministic source routing, and an orchestration handoff.
+The system currently has a working Telegram transport, persistent Lead and Conversation identity, conservative explicit-fact Lead Memory, typed M25 Conversation State with safe initial-course establishment, structured course/branch data, two constrained OpenAI analysis stages, deterministic language resolution, deterministic source routing, deterministic Business / Sales Logic with typed `SalesDecision`, approved Lead-status and Conversation-state persistence, and an orchestration handoff carrying that decision.
 
-It does **not** yet have the Phase 4 business engine or a real student-facing AI answer pipeline.
+It does not yet have the M27 Confidence Engine or normal confidence-gate calculation, M28 persistent course switching, M29 persistent rejection/nurture/stop transitions, live tool execution, booking execution or confirmation, RAG retrieval, or a real student-facing business answer and verifier.
 
 ## 2. Product / System Scope
 
@@ -31,19 +36,22 @@ Saleel is the SkillUp education sales agent persona. The current system can:
 - analyze what is happening in the current student turn;
 - persist approved stable Lead facts conservatively through M24 after trusted TurnAnalysis;
 - expose typed M25 `ConversationState` and conservatively establish an initial current course from one explicit current-turn course entity plus a canonical TurnAnalysis course;
+- run deterministic Business / Sales Logic with qualification decisions and required, allowed, and blocked actions;
+- persist approved Lead-status and Conversation-state updates through the existing boundaries;
 - choose a response language deterministically;
 - decide which trusted source categories are required;
-- load available course and branch facts without making business conclusions;
-- expose updated Lead data and the typed `ConversationState` snapshot as routed memory/state sources; the top-level handoff continues to carry the persisted `Conversation` row;
+- load available structured course and branch facts for trusted business decisions;
+- expose updated Lead data, the typed `ConversationState` snapshot, and `OrchestrationHandoff.salesDecision` as trusted internal handoff data;
 - mark RAG and tool requirements as deferred;
 - produce a typed internal `OrchestrationHandoff`.
 
 The current system intentionally cannot yet:
 
-- decide eligibility, qualification, sales actions, or confidence;
+- calculate M27 confidence or the normal confidence gate;
+- persist M28 course switches or M29 rejection, nurture, or stop transitions;
+- execute live tools, check live availability, create or confirm bookings, or retrieve RAG knowledge;
 - generate a factual student-facing business response;
-- retrieve RAG knowledge;
-- execute tools, check live availability, or create bookings;
+- generate response plans, verifier output, or final Saleel wording;
 - transcribe or synthesize voice;
 - persist message history.
 
@@ -139,8 +147,8 @@ Phase 1 also established structured safe logging, request IDs, and a small appli
 |---|---|---|---|
 | 24 | Lead Memory | COMPLETE | Conservative explicit-fact Lead updates integrated after TurnAnalysis. |
 | 25 | Conversation State | COMPLETE | Typed workflow snapshot, controlled persistence, and safe initial-course establishment. |
-| 26 | Business / Sales Logic | NEXT | Active current-demo scope. |
-| 27 | Confidence Engine | PLANNED | Active current-demo scope. |
+| 26 | Business / Sales Logic | COMPLETE | Deterministic decision and persistence integration complete. |
+| 27 | Confidence Engine | NEXT | Not implemented; active next scope. |
 | 28 | Course Context Switching | **DEFERRED** | Out of current demo scope. |
 | 29 | Demo Rejection / Nurture / Stop | **DEFERRED** | Out of current demo scope. |
 
@@ -186,6 +194,8 @@ NormalizedTextInboundMessage
         -> resolveLanguage(...)
        -> routeQuery(turnAnalysis)
        -> load structured sources / build deferred markers
+       -> decideSalesAction(...) from trusted analysis and sources
+       -> apply the approved Lead status and M25 Conversation state patch
        -> return OrchestrationHandoff
   -> temporary Saleel placeholder
   -> Telegram delivery bridge
@@ -289,15 +299,18 @@ Newest ordering is `created_at DESC`, then `id DESC`. There is no uniqueness con
 
 ### Current write boundary
 
-The live processing path currently writes only through the existing get/create behavior:
+The live processing path writes through narrow module-owned boundaries:
 
 - a new Lead may be inserted;
-- a new Conversation may be inserted.
+- a new Conversation may be inserted;
+- M24 may make one conservative Lead-memory update;
+- M25 may make its initial-course update;
+- M26 may make one Lead-status update and one M25-filtered Conversation-state update.
 
-Module 23 does not update:
+The current runtime does not update:
 
-- Lead facts/preferences/status;
-- Conversation course/stage/qualification/confidence/demo/pending/booking fields;
+- course context for switching;
+- confidence, demo rejection count, or demo push/stop state;
 - courses or branches;
 - bookings;
 - knowledge records.
@@ -628,9 +641,11 @@ It coordinates:
 7. response-language resolution;
 8. deterministic Query Router;
 9. currently available source loading;
-10. handoff construction.
+10. deterministic Business / Sales Logic;
+11. approved Lead-status and M25 Conversation-state persistence;
+12. handoff construction.
 
-It contains no eligibility, qualification, sales, confidence, objection, demo progression, booking progression, response-writing, or style rules.
+It coordinates, but does not inline, M26 eligibility, qualification, objection, demo, and booking-preparation rules. It contains no confidence scoring, tool execution, response-writing, or style rules.
 
 ### Read-only context assembly
 
@@ -652,6 +667,7 @@ It contains no eligibility, qualification, sales, confidence, objection, demo pr
 - `resolvedLanguage`;
 - `queryRoute`;
 - `sources`.
+- `salesDecision` (`OrchestrationHandoff.salesDecision`), the trusted internal M26 business output;
 
 The source bundle contains:
 
@@ -671,7 +687,7 @@ Future business/response modules should consume this handoff instead of:
 - guessing canonical course/branch context;
 - treating deferred source requirements as results.
 
-The handoff is not student-facing, not a SalesDecision, and not a ResponsePlan.
+The handoff now includes the trusted internal `SalesDecision`. It remains non-student-facing and is not a `ResponsePlan`.
 
 ## 16. Source Loading Architecture
 
@@ -800,7 +816,11 @@ Responsibilities:
 - **Tools**: live checks, assets, and later actions.
 - **LLM**: language understanding within strict contracts; never fee/eligibility/availability truth.
 
-Current implementation loads structured DB facts, persists conservative M24 Lead memory, applies the narrow M25 state boundary, exposes updated Lead and typed Conversation State in the handoff, and defers RAG/tools. It does not yet merge competing source results.
+Current implementation loads structured DB facts, persists conservative M24 Lead memory, applies the M25 state boundary, runs pure M26 Business / Sales Logic, persists approved M26 status/state updates, exposes the updated rows plus `SalesDecision` in the handoff, and defers RAG/tool execution.
+
+M26 uses exactly six primary sales groups and closed action/reason vocabularies. Its exhaustive intent map preserves all direct answer obligations. Qualification is deterministic for the approved Data Analytics, Digital Marketing, and Accounting cases. Normal proactive demo stays blocked behind `CONFIDENCE_GATE_PENDING` until M27; only strong explicit demo intent can bypass that missing gate, and it still requires a canonical course, qualification, and structured `demo_available === true`. Booking support stops at one-field-at-a-time preparation or a symbolic availability request—no booking is created or confirmed.
+
+M26 deliberately does not switch persisted course context (M28), mutate rejection/nurture/stop state (M29), calculate confidence (M27), execute tools, or generate response wording.
 
 ## 20. AI Service Architecture
 
@@ -941,16 +961,14 @@ The known `MODULE_TYPELESS_PACKAGE_JSON` warning is non-failing.
 ## 24. Current Known Limitations
 
 - The student-facing text response is still a fixed placeholder.
-- `OrchestrationHandoff` is built internally but not yet consumed by business/response modules.
+- `OrchestrationHandoff` now carries M26 `SalesDecision`, but no response module consumes it yet.
 - Voice is unsupported after identity persistence.
 - No STT/TTS or voice transcript exists.
 - M16 was skipped: no message table, recent history, or persisted transcript.
 - `recentLanguage` is always `null` in current orchestration.
 - M17 was skipped: no RLS baseline.
-- M25 Conversation State is COMPLETE; M26 Business / Sales Logic is NEXT; M27 Confidence Engine remains planned.
-- M25 does not make sales-stage, qualification, demo, booking, confidence, or course-switching decisions.
-- No business/sales decision engine exists.
-- No eligibility/qualification decision is made.
+- M26 Business / Sales Logic is complete; M27 Confidence Engine is next and not implemented.
+- Normal proactive demo cannot become ready until M27 supplies its trusted gate.
 - No confidence engine exists.
 - No course-switching behavior exists; M28 is deferred from the current demo.
 - No demo rejection/nurture/stop engine exists; M29 is deferred from the current demo.
@@ -971,12 +989,12 @@ The current Phase 4 scope is:
 |---|---|---|
 | M24 | COMPLETE | Stable student facts; do not mix with current-turn extraction or decisions. |
 | M25 | COMPLETE | Temporary workflow state, controlled updates, and initial-course establishment only. |
-| M26 | NEXT | Deterministic qualification/actions; use trusted handoff sources. |
-| M27 | PLANNED | Explicit confidence handling separate from provider prose. |
+| M26 | COMPLETE | Deterministic qualification/actions from trusted handoff sources. |
+| M27 | NEXT | Explicit confidence handling separate from provider prose; not implemented. |
 | M28 | **DEFERRED** | Course Context Switching is out of current demo scope. |
 | M29 | **DEFERRED** | Demo Rejection / Nurture / Stop is out of current demo scope. |
 
-M24 is complete; the remaining rows do not authorize speculative fields, writes, or runtime behavior.
+M24, M25, and M26 are complete; M27 is next. The remaining rows do not authorize speculative fields, writes, or runtime behavior.
 
 ## 26. Codebase Navigation Map
 
@@ -997,6 +1015,7 @@ src/
     routing/                          deterministic source routing
     memory/                           conservative stable Lead Memory
     state/                            M25 Conversation State boundary
+    sales-logic/                      M26 deterministic Business / Sales Logic
     orchestration/                    text-turn coordination and handoff
     process/                          processMessage outer turn manager
   services/openai/
