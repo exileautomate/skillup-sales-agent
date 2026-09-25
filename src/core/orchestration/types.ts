@@ -5,6 +5,7 @@ import type { TurnAnalysis } from "../types/turn-analysis.ts";
 import type { ConversationState } from "../state/conversation-state.ts";
 import type { SalesDecision } from "../sales-logic/sales-types.ts";
 import type { ConfidenceSnapshot } from "../confidence/types.ts";
+import type { RagRetrievalResult } from "../rag/rag-retrieval.ts";
 import type {
   Branch,
   Conversation,
@@ -32,17 +33,6 @@ export type SourceLoad<T> =
       reason: string;
     }>;
 
-export type DeferredRagSource =
-  | Readonly<{
-      status: "not_required";
-      data: null;
-    }>
-  | Readonly<{
-      status: "deferred";
-      data: null;
-      reason: "rag_retrieval_not_implemented";
-    }>;
-
 export type DeferredToolSource =
   | Readonly<{
       status: "not_required";
@@ -67,7 +57,7 @@ export type OrchestrationSources = Readonly<{
   courseBranchMapping: SourceLoad<CourseBranchMappingEvidence>;
   memorySource: SourceLoad<Readonly<Lead>>;
   stateSource: SourceLoad<ConversationState>;
-  rag: DeferredRagSource;
+  rag: SourceLoad<RagRetrievalResult>;
   tools: DeferredToolSource;
 }>;
 

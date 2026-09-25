@@ -14,6 +14,7 @@ import {
 import { decideSalesAction } from "../sales-logic/decide-sales-action.ts";
 import { getConfidenceSnapshot } from "../confidence/confidence-engine.ts";
 import { routeQuery } from "../routing/query-router.ts";
+import { retrieveRagKnowledge } from "../rag/rag-retrieval.ts";
 import type { QueryRoute, QueryToolRequest } from "../routing/types.ts";
 import {
   TURN_ANALYSIS_COURSES,
@@ -42,7 +43,6 @@ import { normalizeSemanticMeaning } from "../../services/openai/semantic-normali
 import { analyzeTurn } from "../../services/openai/turn-analysis.ts";
 import type {
   CourseBranchMappingEvidence,
-  DeferredRagSource,
   DeferredToolSource,
   OrchestrationHandoff,
   OrchestrationSources,
@@ -66,6 +66,7 @@ export type OrchestrateTextTurnDependencies = Readonly<{
   listBranches?: typeof listBranches;
   updateLead?: typeof updateLead;
   updateConversation?: typeof updateConversation;
+  retrieveRagKnowledge?: typeof retrieveRagKnowledge;
 }>;
 
 export type OrchestrateTextTurnInput = Readonly<{
@@ -96,6 +97,7 @@ const defaultDependencies: ResolvedDependencies = {
   listBranches,
   updateLead,
   updateConversation,
+  retrieveRagKnowledge,
 };
 
 function resolveDependencies(
@@ -328,14 +330,18 @@ async function loadNamedBranch(
   return { status: "loaded", data: [branch] };
 }
 
-function buildRagSource(queryRoute: QueryRoute): DeferredRagSource {
-  return queryRoute.needsRag
-    ? {
-        status: "deferred",
-        data: null,
-        reason: "rag_retrieval_not_implemented",
-      }
-    : { status: "not_required", data: null };
+async function loadRagSource(
+  queryRoute: QueryRoute,
+  normalizedEnglish: string,
+  turnAnalysis: TurnAnalysis,
+  dependencies: ResolvedDependencies,
+): Promise<OrchestrationSources["rag"]> {
+  if (!queryRoute.needsRag) return { status: "not_required", data: null };
+  const data = await dependencies.retrieveRagKnowledge({
+    queryText: normalizedEnglish,
+    course: turnAnalysis.course,
+  });
+  return { status: "loaded", data };
 }
 
 function copyToolRequest(request: QueryToolRequest): QueryToolRequest {
@@ -360,6 +366,7 @@ async function loadSources(
   lead: Readonly<Lead>,
   conversationState: ReturnType<typeof getConversationState>,
   turnAnalysis: TurnAnalysis,
+  normalizedEnglish: string,
   queryRoute: QueryRoute,
   existingConversationCourse: Readonly<Course> | null,
   dependencies: ResolvedDependencies,
@@ -377,6 +384,12 @@ async function loadSources(
     structuredCourseFacts,
     dependencies,
   );
+  const rag = await loadRagSource(
+    queryRoute,
+    normalizedEnglish,
+    turnAnalysis,
+    dependencies,
+  );
 
   return {
     structuredCourseFacts,
@@ -388,7 +401,7 @@ async function loadSources(
     stateSource: queryRoute.needsState
       ? { status: "loaded", data: conversationState }
       : { status: "not_required", data: null },
-    rag: buildRagSource(queryRoute),
+    rag,
     tools: buildToolSource(queryRoute),
   };
 }
@@ -474,6 +487,7 @@ export async function orchestrateTextTurn(
     currentLead,
     currentConversationState,
     turnAnalysis,
+    semanticNormalization.normalizedEnglish,
     queryRoute,
     existingConversationCourse,
     resolved,

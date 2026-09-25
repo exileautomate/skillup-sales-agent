@@ -224,6 +224,7 @@ function dependencies(overrides = {}) {
     getBranchByName: async () => null,
     getActiveBranchesForCourse: async () => [],
     listBranches: async () => [],
+    retrieveRagKnowledge: async ({ queryText }) => ({ queryText, chunks: [] }),
     updateLead: async (id, patch) => lead({ id, ...patch }),
     updateConversation: async (id, patch) => conversation({ id, ...patch }),
     persistConversationStatePatch: async (storedConversation, patch) => {
@@ -638,6 +639,7 @@ test("marks required course facts unresolved without a canonical course", async 
 
 test("does not load answer sources when the route does not require them", async () => {
   let sourceCalls = 0;
+  let ragCalls = 0;
   const unavailable = async () => {
     sourceCalls += 1;
     throw new Error("an unrequested source must not load");
@@ -650,10 +652,15 @@ test("does not load answer sources when the route does not require them", async 
       getBranchByName: unavailable,
       getActiveBranchesForCourse: unavailable,
       listBranches: unavailable,
+      retrieveRagKnowledge: async () => {
+        ragCalls += 1;
+        throw new Error("RAG must not load when not required");
+      },
     }),
   );
 
   assert.equal(sourceCalls, 0);
+  assert.equal(ragCalls, 0);
   assert.equal(handoff.sources.structuredCourseFacts.status, "not_required");
   assert.equal(handoff.sources.structuredBranchFacts.status, "not_required");
 });
@@ -1137,7 +1144,7 @@ test("M26 persistence failures propagate without a successful handoff", async ()
   );
 });
 
-test("marks RAG and symbolic tools deferred without fake results", async () => {
+test("loads RAG only when the router requires it and preserves deferred tools", async () => {
   const requests = [
     { tool: "check_demo_availability" },
     { tool: "get_course_document", documentType: "brochure" },
@@ -1147,13 +1154,21 @@ test("marks RAG and symbolic tools deferred without fake results", async () => {
     dependencies({
       routeQuery: () =>
         queryRoute({ needsRag: true, toolRequests: requests }),
+      retrieveRagKnowledge: async ({ queryText, course }) => ({
+        queryText,
+        chunks: [],
+        receivedCourse: course,
+      }),
     }),
   );
 
   assert.deepEqual(handoff.sources.rag, {
-    status: "deferred",
-    data: null,
-    reason: "rag_retrieval_not_implemented",
+    status: "loaded",
+    data: {
+      queryText: "What is the Data Analytics fee?",
+      chunks: [],
+      receivedCourse: "data_analytics",
+    },
   });
   assert.deepEqual(handoff.sources.tools, {
     status: "deferred",
@@ -1194,7 +1209,7 @@ test("preserves a multi-source handoff without booking execution", async () => {
   assert.equal(handoff.sources.structuredCourseFacts.status, "loaded");
   assert.equal(handoff.sources.memorySource.status, "loaded");
   assert.equal(handoff.sources.stateSource.status, "loaded");
-  assert.equal(handoff.sources.rag.status, "deferred");
+  assert.equal(handoff.sources.rag.status, "loaded");
   assert.deepEqual(handoff.sources.tools, {
     status: "not_required",
     requests: [],

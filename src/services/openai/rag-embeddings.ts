@@ -67,3 +67,12 @@ export async function embedRagTexts(
 
   return embeddings;
 }
+
+/** Generates one validated M32 semantic-query embedding using the M31 contract. */
+export async function embedRagQuery(
+  queryText: string,
+  client?: RagEmbeddingsClient,
+): Promise<RagEmbedding> {
+  const embeddings = await embedRagTexts([queryText], client);
+  return embeddings[0];
+}

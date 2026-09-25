@@ -16,7 +16,7 @@
 | M29 status | DEFERRED |
 | M30 status | COMPLETE WITH ACCEPTED DEMO LIMITATION |
 | M31 status | COMPLETE |
-| M32 status | PLANNED |
+| M32 status | IMPLEMENTATION READY FOR COMBINED QA |
 | M33 status | PLANNED |
 
 Permanent Phase 4 development history: `PHASE_4_BUSINESS_LOGIC_MEMORY_STATE_CONFIDENCE_DEVELOPMENT_TRACKER.md`.
@@ -28,7 +28,7 @@ Permanent Phase 4 development history: `PHASE_4_BUSINESS_LOGIC_MEMORY_STATE_CONF
 
 The system currently has a working Telegram transport, persistent Lead and Conversation identity, conservative explicit-fact Lead Memory, typed M25 Conversation State with safe initial-course establishment, structured course/branch data, two constrained OpenAI analysis stages, deterministic language resolution, deterministic source routing, deterministic Business / Sales Logic with typed `SalesDecision`, approved Lead-status and Conversation-state persistence, and an orchestration handoff carrying that decision.
 
-It now has a deterministic M27 Confidence Engine for unique delivered-information coverage, derived score/range, and the normal demo confidence gate. It does not yet have M28 persistent course switching, M29 persistent rejection/nurture/stop transitions, live tool execution, booking execution or confirmation, RAG retrieval, or a real student-facing business answer and verifier.
+It now has a deterministic M27 Confidence Engine for unique delivered-information coverage, derived score/range, and the normal demo confidence gate. It does not yet have M28 persistent course switching, M29 persistent rejection/nurture/stop transitions, live tool execution, booking execution or confirmation, or a real student-facing business answer and verifier.
 
 ## 2. Product / System Scope
 
@@ -48,14 +48,14 @@ Saleel is the SkillUp education sales agent persona. The current system can:
 - decide which trusted source categories are required;
 - load available structured course and branch facts for trusted business decisions;
 - expose updated Lead data, the typed `ConversationState` snapshot, and `OrchestrationHandoff.salesDecision` as trusted internal handoff data;
-- mark RAG and tool requirements as deferred;
+- mark tool requirements as deferred;
 - produce a typed internal `OrchestrationHandoff`.
 
 The current system intentionally cannot yet:
 
 - mark new confidence coverage automatically: current required actions and loaded sources do not prove delivery;
 - persist M28 course switches or M29 rejection, nurture, or stop transitions;
-- execute live tools, check live availability, create or confirm bookings, or retrieve RAG knowledge;
+- execute live tools, check live availability, or create or confirm bookings;
 - generate a factual student-facing business response;
 - generate response plans, verifier output, or final Saleel wording;
 - transcribe or synthesize voice;
@@ -100,7 +100,7 @@ This is a temporary phase boundary, not the output of the analysis handoff.
 ### Planned/deferred, not implemented
 
 - Sarvam STT/TTS is not installed or called.
-- M31 embeddings/storage is complete; M32 RAG retrieval and M33 structured DB/RAG context merge remain planned.
+- M31 embeddings/storage and M32 RAG retrieval are complete; M33 structured DB/RAG context merge remains planned.
 - No n8n.
 - No WhatsApp adapter.
 - No external tool execution coordinator.
@@ -163,8 +163,8 @@ Phase 1 also established structured safe logging, request IDs, and a small appli
 | Module | Name | Status | Current architectural result |
 |---|---|---|---|
 | 30 | RAG Ingestion / Chunking | COMPLETE WITH ACCEPTED DEMO LIMITATION | Pure Doc 02 natural-heading chunks with provenance, mixed knowledge classes, and TBD retrieval exclusion. |
-| 31 | Embeddings / Storage | PLANNED | Embeddings and knowledge-base writes. |
-| 32 | RAG Retrieval | PLANNED | Runtime retrieval. |
+| 31 | Embeddings / Storage | COMPLETE | `text-embedding-3-small` embeddings at 1536 dimensions; 104 stored chunks, 96 embedded, 8 TBD/excluded with null embeddings, and stable `source_chunk_id` idempotency. |
+| 32 | RAG Retrieval | COMPLETE | Uses trusted normalized-English query embeddings, exact pgvector cosine search, course isolation, normal-retrieval guards, threshold `0.46`, and max five chunks. |
 | 33 | Structured DB / RAG Context Merge | PLANNED | Structured exact facts remain above RAG explanation. |
 
 ## 5. Current End-to-End Runtime
@@ -388,7 +388,7 @@ Relational booking storage for Lead, Conversation, Course, Branch, student detai
 
 #### `knowledge_base`
 
-Source-attributed M31 RAG records: category, intent, content, knowledge class, metadata, optional course, nullable `vector(1536)` embedding, and source attribution. Stable `source_chunk_id` makes ingestion idempotent; M32 retrieval remains unimplemented.
+Source-attributed M31 RAG records: category, intent, content, knowledge class, metadata, optional course, nullable `vector(1536)` embedding, and source attribution. Stable `source_chunk_id` makes ingestion idempotent. M32 reads normal eligible explanatory chunks through a focused exact cosine RPC; M33 still owns DB/RAG context merge.
 
 ### Absent table/security layer
 
@@ -750,10 +750,10 @@ If routed, M25 derives and returns a typed `ConversationState` snapshot from the
 
 ### RAG source
 
-- No RAG need -> `not_required`.
-- RAG need -> `deferred: rag_retrieval_not_implemented` with `data: null`.
+- No RAG need -> `not_required`, with no query embedding or database search.
+- RAG need -> `loaded` controlled explanatory chunks from M32. The query is M18 `normalizedEnglish`; query embeddings use `text-embedding-3-small` at 1536 dimensions; exact pgvector cosine distance uses threshold `0.46`, deterministic distance/source-chunk ordering, and at most five chunks.
 
-The existing `knowledge_base` repository is not queried as fake RAG.
+M32 requires non-null embeddings, non-TBD class, `student_facing = true`, and `normalRetrievalEligible = true`. Canonical course context permits only that course plus all/general chunks; tags, including the accepted `marketing_analytics` leakage, never establish course identity.
 
 M30 is a pure, read-only ingestion boundary for only `02_SkillUp_RAG_Deep_Course_Knowledge.md`: natural heading chunks retain provenance and all applicable source classes, while TBD-only chunks are excluded from normal retrieval. It performs no embedding, knowledge-base write, or runtime retrieval.
 
@@ -835,7 +835,7 @@ Responsibilities:
 - **Tools**: live checks, assets, and later actions.
 - **LLM**: language understanding within strict contracts; never fee/eligibility/availability truth.
 
-Current implementation loads structured DB facts, persists conservative M24 Lead memory, applies the M25 state boundary, parses persisted M27 coverage read-only, derives its 21-point score/range, runs pure M26 Business / Sales Logic, persists approved M26 status/state updates, exposes the updated rows plus `SalesDecision` and trusted confidence snapshot in the handoff, and defers RAG/tool execution.
+Current implementation loads structured DB facts, controlled M32 explanatory RAG only when routed, persists conservative M24 Lead memory, applies the M25 state boundary, parses persisted M27 coverage read-only, derives its 21-point score/range, runs pure M26 Business / Sales Logic, persists approved M26 status/state updates, and exposes the updated rows plus `SalesDecision`, trusted confidence snapshot, and source handoff. M33 still owns DB/RAG context merge; tools remain deferred.
 
 M27 coverage records only unique information already delivered to the student, never purchase probability, planned answers, intents, or loaded sources. Its normal demo gate requires total 11, course 2, fees 2, and placement 2; strong explicit demo intent bypasses confidence only and still requires a canonical course, qualification, structured `demo_available === true`, and no existing stop state. Current placeholder delivery never marks coverage; a later verified response pipeline must explicitly apply M27 coverage through the M25 state boundary.
 
@@ -990,7 +990,7 @@ The known `MODULE_TYPELESS_PACKAGE_JSON` warning is non-failing.
 - M27 derives confidence read-only from persisted coverage; no current response path automatically records coverage.
 - No course-switching behavior exists; M28 is deferred from the current demo.
 - No demo rejection/nurture/stop engine exists; M29 is deferred from the current demo.
-- M30 has deterministic Doc 02-only ingestion/chunking with provenance and TBD retrieval exclusion; its accepted `marketing_analytics` metadata leakage into some Data Analytics chunks remains unchanged. M31 stores 104 chunks using `text-embedding-3-small` at 1536 dimensions: 96 embedded and 8 TBD/excluded with null embeddings. M32 retrieval and M33 structured DB/RAG context merge remain planned. Natural heading boundaries take priority over the approximate 300–700 word guidance, and M32 must not assume that metadata is perfectly isolated.
+- M30 has deterministic Doc 02-only ingestion/chunking with provenance and TBD retrieval exclusion; its accepted `marketing_analytics` metadata leakage into some Data Analytics chunks remains unchanged. M31 stores 104 chunks using `text-embedding-3-small` at 1536 dimensions: 96 embedded and 8 TBD/excluded with null embeddings. M32 uses normalized-English query embeddings, exact cosine search, threshold `0.46`, max five chunks, course isolation, and eligibility guards; it does not merge RAG with structured truth. M33 structured DB/RAG context merge remains planned. Natural heading boundaries take priority over the approximate 300–700 word guidance, and tags never establish course identity.
 - Tool requests are symbolic/deferred only.
 - No demo availability execution, document resolution, location resolution, or booking execution exists.
 - No response planning, style engine, few-shot selection, generator, or verifier exists.
@@ -1013,7 +1013,7 @@ The current Phase 4 scope is:
 | M29 | **DEFERRED** | Demo Rejection / Nurture / Stop is out of current demo scope. |
 | M30 | COMPLETE WITH ACCEPTED DEMO LIMITATION | Pure Doc 02-only heading ingestion/chunking; no embedding, storage, or retrieval. |
 | M31 | COMPLETE | `text-embedding-3-small` at 1536 dimensions; 104 stored RAG chunks, 96 embedded, and 8 TBD/excluded with null embeddings; stable `source_chunk_id` idempotency; no ANN index. |
-| M32 | PLANNED | Runtime retrieval. |
+| M32 | COMPLETE | Controlled normalized-English query embedding, exact cosine search, threshold `0.46`, max five, and course/eligibility guards; no M33 merge. |
 | M33 | PLANNED | Structured DB / RAG context merge. |
 
 M24, M25, M26, and M27 are complete. The remaining rows do not authorize speculative fields, writes, or runtime behavior.
@@ -1091,7 +1091,7 @@ Update this document when:
 - an important contract or responsibility moves;
 - database tables/relationships/security architecture change;
 - source authority or source loading changes;
-- a deferred system such as RAG/tool execution becomes real;
+- a deferred system such as tool execution becomes real;
 - a new external execution/channel path is added;
 - the placeholder is replaced by the real response pipeline.
 

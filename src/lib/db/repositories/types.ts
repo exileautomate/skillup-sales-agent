@@ -159,6 +159,22 @@ export type KnowledgeBaseRecord = {
   updated_at: string;
 };
 
+export type KnowledgeBaseSimilarityMatch = {
+  id: Uuid;
+  source_chunk_id: string;
+  course_id: Uuid | null;
+  title: string;
+  content: string;
+  category: string | null;
+  intent: string | null;
+  knowledge_class: KnowledgeClass;
+  student_facing: boolean;
+  metadata_json: JsonValue;
+  source_document: string | null;
+  source_section: string | null;
+  distance: number;
+};
+
 export type CreateLeadInput = {
   channel: string;
   channel_user_id: string;

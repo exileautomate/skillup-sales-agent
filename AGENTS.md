@@ -33,7 +33,7 @@ Voice metadata is normalized and identity is persisted, but voice remains unsupp
 
 Last committed M24 checkpoint: `7676b4b65542a26de459691a9630a6053aa3bebf`.
 
-Phase 5 scope: **M30 RAG Ingestion / Chunking - COMPLETE WITH ACCEPTED DEMO LIMITATION; M31 Embeddings / Storage - PLANNED; M32 RAG Retrieval - PLANNED; M33 Structured DB / RAG Context Merge - PLANNED**.
+Phase 5 scope: **M30 RAG Ingestion / Chunking - COMPLETE WITH ACCEPTED DEMO LIMITATION; M31 Embeddings / Storage - COMPLETE; M32 RAG Retrieval - COMPLETE; M33 Structured DB / RAG Context Merge - PLANNED**.
 
 Permanent Phase 4 history: `PHASE_4_BUSINESS_LOGIC_MEMORY_STATE_CONFIDENCE_DEVELOPMENT_TRACKER.md`.
 
@@ -135,12 +135,13 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | Business / Sales Logic | `decideSalesAction`, `SalesDecision` | `src/core/sales-logic/decide-sales-action.ts`, `src/core/sales-logic/sales-types.ts` | Pure deterministic obligations, permissions, qualification, demo, and booking-preparation decisions. |
 | Confidence Engine | `getConfidenceSnapshot`, `evaluateDemoGate` | `src/core/confidence/confidence-engine.ts` | Pure unique delivered-information coverage, derived score/range, and demo gate math. |
 | RAG ingestion / chunking | `ingestSkillUpRagDocument`, `RagChunk` | `src/core/rag/rag-ingestion.ts`, `src/core/rag/types.ts` | Pure Doc 02 heading chunks with provenance and TBD retrieval exclusion; no embeddings, writes, or retrieval. |
+| RAG retrieval | `retrieveRagKnowledge`, `RagRetrievalResult` | `src/core/rag/rag-retrieval.ts` | Normalized-English query embedding, exact cosine search, top five, course isolation, and normal-retrieval guards; explanatory context only. |
 | Course reads | `getCourseById`, `getCourseByInternalName`, `listCourses` | `src/lib/db/repositories/courses.ts` | Exact structured course facts. |
 | Branch reads | `getBranchByName`, `listBranches`, `getActiveBranchesForCourse` | `src/lib/db/repositories/branches.ts` | Branch and course-branch mapping evidence. |
 | Lead repository | `findLeadByChannelUserId`, `createLead`, `updateLead` | `src/lib/db/repositories/leads.ts` | Repository primitives; Module 23 does not update Lead. |
 | Conversation repository | `findLatestConversationForLeadChannel`, `createConversation`, `updateConversation` | `src/lib/db/repositories/conversations.ts` | Repository primitives used by Conversation persistence and the M25 state boundary. |
 | Booking repository | `createDemoBookingRecord` and reads/updates | `src/lib/db/repositories/demo-bookings.ts` | Exists as data primitive; not called by current runtime. |
-| Knowledge repository | `listKnowledgeBaseRecords` | `src/lib/db/repositories/knowledge-base.ts` | Exists; current orchestrator deliberately does not use it as RAG. |
+| Knowledge repository | `searchKnowledgeBaseByCosineSimilarity` | `src/lib/db/repositories/knowledge-base.ts` | Read-only M32 cosine RPC boundary; no corpus write or retrieval ranking outside M32. |
 | Repository client boundary | `getRepositoryClient` | `src/lib/db/repositories/client.ts` | Server-only lazy Supabase client acquisition. |
 | Supabase client | `createSupabaseServerClient` | `src/lib/supabase/server.ts` | Server-only, publishable-key client; no auth session persistence. |
 | Shared OpenAI client | `createOpenAIClient` | `src/services/openai/client.ts` | Lazy, server-only, existing `OPENAI_API_KEY`. |
@@ -187,7 +188,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | M29 | Demo Rejection / Nurture / Stop | **DEFERRED** from the current demo. |
 | M30 | RAG Ingestion / Chunking | **COMPLETE WITH ACCEPTED DEMO LIMITATION**; pure Doc 02 heading chunks with provenance and TBD retrieval exclusion. |
 | M31 | Embeddings / Storage | **COMPLETE**; `text-embedding-3-small` at 1536 dimensions stores 104 RAG chunks (96 embedded, 8 TBD/excluded with null embeddings) with stable `source_chunk_id` idempotency and no ANN index. |
-| M32 | RAG Retrieval | **PLANNED**; owns retrieval and source loading. |
+| M32 | RAG Retrieval | **COMPLETE**; normalized-English query embeddings use `text-embedding-3-small` / 1536, exact cosine retrieval caps at five, and only normal eligible explanatory chunks pass course isolation. |
 | M33 | Structured DB / RAG Context Merge | **PLANNED**; preserves structured-truth authority at context assembly. |
 
 ## 7. Important Contracts / Types
@@ -222,7 +223,7 @@ LLM knowledge is outside this authority hierarchy and is never business truth.
 |---|---|---|
 | Live tools | Live checks, assets, actions | Symbolic requests only; execution deferred. |
 | Structured DB | Exact/mutable facts | Implemented for course/branch reads and persistence. |
-| Approved RAG | Deep approved explanations | Deferred; route/source marker only. |
+| Approved RAG | Deep approved explanations | M32 loads controlled explanatory chunks only when Query Router sets `needsRag`; M33 remains responsible for DB/RAG merge. |
 | Memory | Stable student information | M24 persists approved explicit Lead facts; the updated Lead may be handed off read-only. |
 | State | Temporary workflow context | M25 exposes a typed snapshot; controlled persistence is available for future trusted decisions. |
 
@@ -238,7 +239,7 @@ Current tables:
 - `leads` — stable channel identity and future student memory fields.
 - `conversations` — Lead/channel record and future workflow fields.
 - `demo_bookings` — booking storage foundation; not executed by current runtime.
-- `knowledge_base` — M31 source-attributed RAG storage with 104 live rows; not retrieved by current runtime because M32 remains planned.
+- `knowledge_base` — M31 source-attributed RAG storage with 104 live rows; M32 reads only normal-eligible chunks through exact cosine RPC.
 
 There is no `messages` table. RLS is not implemented. Browser-side privileged database access is prohibited.
 
@@ -277,6 +278,7 @@ Current M25 pre-commit baseline: **198 passed, 0 failed**; TypeScript and produc
 | Conversation State | `tests/conversation-state.test.mjs` |
 | Business / Sales Logic | `tests/sales-logic.test.mjs` |
 | RAG ingestion / chunking | `tests/rag-ingestion.test.mjs` |
+| RAG retrieval | `tests/rag-retrieval.test.mjs` |
 | Structured validation/repair | `tests/structured-output-validation.test.mjs` |
 | Query Router | `tests/query-router.test.mjs` |
 | Orchestration/source loading | `tests/orchestrator.test.mjs` |
@@ -305,7 +307,7 @@ The Node test runner may emit the known non-failing `MODULE_TYPELESS_PACKAGE_JSO
 - Demo rejection/nurture/stop behavior (M29 deferred from current demo).
 - M30 RAG ingestion/chunking is complete with an accepted demo limitation: only Doc 02 is parsed by natural headings, with provenance/class preservation and TBD-only retrieval exclusion. The generic `/analytics/i` metadata rule currently leaks `marketing_analytics` into Data Analytics chunks; this may reduce future retrieval metadata precision, correction is deferred, and M32 must not assume that metadata is perfectly isolated.
 - Natural heading boundaries take priority over the approximate 300–700 word guidance.
-- M31 embeddings/storage is complete: `text-embedding-3-small`, 1536 dimensions, 104 stored rows, 96 embedded, and 8 TBD/excluded with null embeddings. Runtime retrieval (M32) and structured DB/RAG context merge (M33) remain unimplemented.
+- M31 embeddings/storage is complete: `text-embedding-3-small`, 1536 dimensions, 104 stored rows, 96 embedded, and 8 TBD/excluded with null embeddings. M32 uses normalized-English query embeddings, exact cosine search, a calibrated `0.46` distance threshold, max five results, course isolation, and embedding/class/student-facing/eligibility guards. M33 remains responsible for structured DB/RAG context merge.
 - Tool execution, demo availability execution, document/location execution, and booking creation.
 - Real response planning/generation, Saleel style engine, few-shot selection, and verifier.
 - STT/TTS and voice intelligence; voice is unsupported after persistence.

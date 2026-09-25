@@ -8,9 +8,17 @@ import {
 import type {
   KnowledgeBaseFilters,
   KnowledgeBaseRecord,
+  KnowledgeBaseSimilarityMatch,
   UpsertKnowledgeBaseRecordInput,
   Uuid,
 } from "./types.ts";
+
+export type KnowledgeBaseSimilaritySearchInput = Readonly<{
+  queryEmbedding: readonly number[];
+  courseId: Uuid | null;
+  maxDistance: number;
+  maxResults: number;
+}>;
 
 export async function getKnowledgeBaseRecordById(
   id: Uuid,
@@ -58,6 +66,25 @@ export async function listKnowledgeBaseRecords(
 
   throwIfRepositoryError(error, "knowledge-base record listing");
   return (data ?? []) as KnowledgeBaseRecord[];
+}
+
+/** Executes the focused M32 cosine-similarity RPC; it performs no writes. */
+export async function searchKnowledgeBaseByCosineSimilarity(
+  input: KnowledgeBaseSimilaritySearchInput,
+  client?: RepositoryClient,
+): Promise<KnowledgeBaseSimilarityMatch[]> {
+  const { data, error } = await (await getRepositoryClient(client)).rpc(
+    "match_skillup_rag_chunks",
+    {
+      query_embedding: `[${input.queryEmbedding.join(",")}]`,
+      requested_course_id: input.courseId,
+      max_cosine_distance: input.maxDistance,
+      max_results: input.maxResults,
+    },
+  );
+
+  throwIfRepositoryError(error, "knowledge-base cosine similarity search");
+  return (data ?? []) as KnowledgeBaseSimilarityMatch[];
 }
 
 /**
