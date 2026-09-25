@@ -15,7 +15,7 @@
 | M28 status | DEFERRED |
 | M29 status | DEFERRED |
 | M30 status | COMPLETE WITH ACCEPTED DEMO LIMITATION |
-| M31 status | PLANNED |
+| M31 status | COMPLETE |
 | M32 status | PLANNED |
 | M33 status | PLANNED |
 
@@ -82,7 +82,7 @@ This is a temporary phase boundary, not the output of the analysis handoff.
 | Tailwind CSS | `^4`, generic current web shell |
 | Supabase JS | `^2.116.0`, server-side PostgreSQL access |
 | PostgreSQL/Supabase | Structured business data and persistence |
-| pgvector extension | Enabled; nullable dimensionless future embedding column only |
+| pgvector extension | Enabled; `knowledge_base.embedding` stores nullable `vector(1536)` embeddings |
 | OpenAI SDK | `^7.20.0`, Responses API for M18/M20 |
 | Zod | `^4.6.5`, strict runtime structured-output validation |
 | `server-only` | Protects provider/database/Telegram server modules |
@@ -100,7 +100,7 @@ This is a temporary phase boundary, not the output of the analysis handoff.
 ### Planned/deferred, not implemented
 
 - Sarvam STT/TTS is not installed or called.
-- RAG execution, embeddings generation, and vector retrieval are absent.
+- M31 embeddings/storage is complete; M32 RAG retrieval and M33 structured DB/RAG context merge remain planned.
 - No n8n.
 - No WhatsApp adapter.
 - No external tool execution coordinator.
@@ -388,7 +388,7 @@ Relational booking storage for Lead, Conversation, Course, Branch, student detai
 
 #### `knowledge_base`
 
-Future source-attributed RAG records: category, intent, content, knowledge class, metadata, optional course, optional nullable dimensionless vector, and source attribution. Current orchestration does not query it as a substitute for RAG.
+Source-attributed M31 RAG records: category, intent, content, knowledge class, metadata, optional course, nullable `vector(1536)` embedding, and source attribution. Stable `source_chunk_id` makes ingestion idempotent; M32 retrieval remains unimplemented.
 
 ### Absent table/security layer
 
@@ -990,7 +990,7 @@ The known `MODULE_TYPELESS_PACKAGE_JSON` warning is non-failing.
 - M27 derives confidence read-only from persisted coverage; no current response path automatically records coverage.
 - No course-switching behavior exists; M28 is deferred from the current demo.
 - No demo rejection/nurture/stop engine exists; M29 is deferred from the current demo.
-- M30 has deterministic Doc 02-only ingestion/chunking with provenance and TBD retrieval exclusion; it has no embedding generation, database write, vector search, or runtime retrieval. Natural heading boundaries take priority over the approximate 300–700 word guidance. The generic `/analytics/i` metadata rule currently leaks `marketing_analytics` into Data Analytics chunks; this may reduce future retrieval metadata precision, correction is deferred, and M32 must not assume that metadata is perfectly isolated.
+- M30 has deterministic Doc 02-only ingestion/chunking with provenance and TBD retrieval exclusion; its accepted `marketing_analytics` metadata leakage into some Data Analytics chunks remains unchanged. M31 stores 104 chunks using `text-embedding-3-small` at 1536 dimensions: 96 embedded and 8 TBD/excluded with null embeddings. M32 retrieval and M33 structured DB/RAG context merge remain planned. Natural heading boundaries take priority over the approximate 300–700 word guidance, and M32 must not assume that metadata is perfectly isolated.
 - Tool requests are symbolic/deferred only.
 - No demo availability execution, document resolution, location resolution, or booking execution exists.
 - No response planning, style engine, few-shot selection, generator, or verifier exists.
@@ -1012,7 +1012,7 @@ The current Phase 4 scope is:
 | M28 | **DEFERRED** | Course Context Switching is out of current demo scope. |
 | M29 | **DEFERRED** | Demo Rejection / Nurture / Stop is out of current demo scope. |
 | M30 | COMPLETE WITH ACCEPTED DEMO LIMITATION | Pure Doc 02-only heading ingestion/chunking; no embedding, storage, or retrieval. |
-| M31 | PLANNED | Embeddings and storage. |
+| M31 | COMPLETE | `text-embedding-3-small` at 1536 dimensions; 104 stored RAG chunks, 96 embedded, and 8 TBD/excluded with null embeddings; stable `source_chunk_id` idempotency; no ANN index. |
 | M32 | PLANNED | Runtime retrieval. |
 | M33 | PLANNED | Structured DB / RAG context merge. |
 

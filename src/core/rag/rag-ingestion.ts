@@ -319,11 +319,15 @@ function chunksForSection(
 export function ingestSkillUpRagDocument(markdown: string): RagChunk[] {
   const parsed = parseRagMarkdown(markdown);
   const occurrences = new Map<string, number>();
-  return parsed.sections.flatMap((section) => chunksForSection(section, [], [])).map((chunk) => {
+  const chunks = parsed.sections.flatMap((section) => chunksForSection(section, [], [])).map((chunk) => {
     const occurrence = (occurrences.get(chunk.chunkId) ?? 0) + 1;
     occurrences.set(chunk.chunkId, occurrence);
     return occurrence === 1
       ? chunk
       : { ...chunk, chunkId: `${chunk.chunkId}-part-${occurrence}` };
   });
+
+  return chunks.filter((chunk) => chunk.knowledgeClasses.some((knowledgeClass) =>
+    KNOWLEDGE_CLASS_ORDER.includes(knowledgeClass),
+  ));
 }

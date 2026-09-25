@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   countRagWords,
@@ -133,11 +135,43 @@ test("TBD-only known-gap chunks remain traceable but are excluded from normal re
   assert.match(chunk.content, /Should come from current data\./);
 });
 
-test("missing reliable course/category metadata remains null and tags remain empty", () => {
+test("unclassified structural guidance is excluded from the storage corpus", () => {
   const chunks = ingestSkillUpRagDocument("# 99. Unclassified\n\nPlain source text.");
-  assert.equal(chunks[0].course, null);
-  assert.equal(chunks[0].category, null);
-  assert.deepEqual(chunks[0].intents, []);
+  assert.deepEqual(chunks, []);
+});
+
+test("classified business, demo, mixed, and TBD chunks remain in the storage corpus", () => {
+  const chunks = ingestSkillUpRagDocument(`${fixture}
+
+# 18. Demo Knowledge
+
+**Knowledge class:** DEMO-EXPLANATORY
+
+Demo explanation.`);
+  assert.deepEqual(chunkBySection(chunks, "FEE-01").knowledgeClasses, ["business_locked"]);
+  assert.deepEqual(chunkBySection(chunks, "18. Demo Knowledge").knowledgeClasses, ["demo_explanatory"]);
+  assert.deepEqual(chunkBySection(chunks, "DA-07").knowledgeClasses, [
+    "business_locked",
+    "demo_explanatory",
+  ]);
+  assert.ok(chunkBySection(chunks, "Current live batches").knowledgeClasses.includes("tbd"));
+});
+
+test("actual Doc 02 storage corpus contains only classified chunks and retains the accepted tag limitation", async () => {
+  const source = await readFile(
+    fileURLToPath(new URL("../../02_SkillUp_RAG_Deep_Course_Knowledge.md", import.meta.url)),
+    "utf8",
+  );
+  const chunks = ingestSkillUpRagDocument(source);
+  const eligible = chunks.filter((chunk) => chunk.normalRetrievalEligible);
+
+  assert.equal(chunks.length, 104);
+  assert.equal(eligible.length, 96);
+  assert.equal(chunks.length - eligible.length, 8);
+  assert.ok(chunks.every((chunk) => chunk.knowledgeClasses.length > 0));
+  assert.ok(chunks.some((chunk) =>
+    chunk.course === "data_analytics" && chunk.metadata.tags.includes("marketing_analytics"),
+  ));
 });
 
 test("word counting is deterministic", () => {
@@ -147,7 +181,7 @@ test("word counting is deterministic", () => {
 
 test("a long section splits only between paragraphs and repeats its heading", () => {
   const paragraph = "word ".repeat(360).trim();
-  const chunks = ingestSkillUpRagDocument(`# 31. Long section\n\n${paragraph}\n\n${paragraph}`);
+  const chunks = ingestSkillUpRagDocument(`# 31. Long section\n\n**Knowledge class:** BUSINESS-LOCKED\n\n${paragraph}\n\n${paragraph}`);
   assert.equal(chunks.length, 2);
   assert.match(chunks[0].content, /^# 31\. Long section/);
   assert.match(chunks[1].content, /^# 31\. Long section/);
@@ -156,13 +190,15 @@ test("a long section splits only between paragraphs and repeats its heading", ()
 });
 
 test("a short self-contained section is not padded or merged", () => {
-  const chunks = ingestSkillUpRagDocument("# 32. Short section\n\nShort source text.");
+  const chunks = ingestSkillUpRagDocument("# 32. Short section\n\n**Knowledge class:** BUSINESS-LOCKED\n\nShort source text.");
   assert.equal(chunks.length, 1);
   assert.match(chunks[0].content, /Short source text\./);
 });
 
 test("child heading chunks under one coded section receive distinct stable IDs", () => {
   const chunks = ingestSkillUpRagDocument(`# 9. Course Deep Dive — Data Analytics
+
+**Knowledge class:** BUSINESS-LOCKED
 
 ## DA-03 — Journey
 
@@ -173,7 +209,7 @@ First stage.
 ### Stage 2 — Practice
 
 Second stage.`);
-  assert.deepEqual(chunks.map((chunk) => chunk.chunkId), [
+  assert.deepEqual(chunks.filter((chunk) => chunk.metadata.sourceSectionId === "DA-03").map((chunk) => chunk.chunkId), [
     "skillup-rag-v1-da-03-stage-1-foundation",
     "skillup-rag-v1-da-03-stage-2-practice",
   ]);
@@ -182,6 +218,8 @@ Second stage.`);
 test("repeated untitled source subheadings receive deterministic occurrence suffixes", () => {
   const chunks = ingestSkillUpRagDocument(`# 22. Retrieval Rules
 
+**Knowledge class:** BUSINESS-LOCKED
+
 ### Student asks:
 
 First example.
@@ -189,14 +227,14 @@ First example.
 ### Student asks:
 
 Second example.`);
-  assert.deepEqual(chunks.map((chunk) => chunk.chunkId), [
+  assert.deepEqual(chunks.filter((chunk) => chunk.title === "Student asks:").map((chunk) => chunk.chunkId), [
     "skillup-rag-v1-22-retrieval-rules-student-asks",
     "skillup-rag-v1-22-retrieval-rules-student-asks-part-2",
   ]);
 });
 
 test("the pure ingestion API has no provider dependency and does not mutate input", () => {
-  const markdown = "# 33. Pure\n\nOriginal text.";
+  const markdown = "# 33. Pure\n\n**Knowledge class:** BUSINESS-LOCKED\n\nOriginal text.";
   const frozen = Object.freeze(markdown);
   const chunks = ingestSkillUpRagDocument(frozen);
   assert.equal(markdown, frozen);

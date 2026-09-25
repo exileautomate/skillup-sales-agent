@@ -143,8 +143,9 @@ export type DemoBooking = {
 
 export type KnowledgeBaseRecord = {
   id: Uuid;
+  source_chunk_id: string;
   course_id: Uuid | null;
-  category: string;
+  category: string | null;
   intent: string | null;
   title: string;
   content: string;
@@ -213,4 +214,19 @@ export type KnowledgeBaseFilters = {
   intent?: string;
   knowledge_class?: KnowledgeClass;
   student_facing?: boolean;
+};
+
+export type UpsertKnowledgeBaseRecordInput = {
+  source_chunk_id: string;
+  course_id: Uuid | null;
+  category: string | null;
+  intent: string | null;
+  title: string;
+  content: string;
+  knowledge_class: KnowledgeClass;
+  student_facing: boolean;
+  metadata_json: JsonValue;
+  embedding: string | null;
+  source_document: string;
+  source_section: string;
 };

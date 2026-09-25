@@ -186,7 +186,7 @@ Voice does not call semantic normalization, TurnAnalysis, routing, RAG, tools, o
 | M28 | Course Context Switching | **DEFERRED** from the current demo. |
 | M29 | Demo Rejection / Nurture / Stop | **DEFERRED** from the current demo. |
 | M30 | RAG Ingestion / Chunking | **COMPLETE WITH ACCEPTED DEMO LIMITATION**; pure Doc 02 heading chunks with provenance and TBD retrieval exclusion. |
-| M31 | Embeddings / Storage | **PLANNED**; owns embeddings and knowledge-base storage. |
+| M31 | Embeddings / Storage | **COMPLETE**; `text-embedding-3-small` at 1536 dimensions stores 104 RAG chunks (96 embedded, 8 TBD/excluded with null embeddings) with stable `source_chunk_id` idempotency and no ANN index. |
 | M32 | RAG Retrieval | **PLANNED**; owns retrieval and source loading. |
 | M33 | Structured DB / RAG Context Merge | **PLANNED**; preserves structured-truth authority at context assembly. |
 
@@ -238,7 +238,7 @@ Current tables:
 - `leads` — stable channel identity and future student memory fields.
 - `conversations` — Lead/channel record and future workflow fields.
 - `demo_bookings` — booking storage foundation; not executed by current runtime.
-- `knowledge_base` — future source-attributed RAG storage; not retrieved by current runtime.
+- `knowledge_base` — M31 source-attributed RAG storage with 104 live rows; not retrieved by current runtime because M32 remains planned.
 
 There is no `messages` table. RLS is not implemented. Browser-side privileged database access is prohibited.
 
@@ -305,7 +305,7 @@ The Node test runner may emit the known non-failing `MODULE_TYPELESS_PACKAGE_JSO
 - Demo rejection/nurture/stop behavior (M29 deferred from current demo).
 - M30 RAG ingestion/chunking is complete with an accepted demo limitation: only Doc 02 is parsed by natural headings, with provenance/class preservation and TBD-only retrieval exclusion. The generic `/analytics/i` metadata rule currently leaks `marketing_analytics` into Data Analytics chunks; this may reduce future retrieval metadata precision, correction is deferred, and M32 must not assume that metadata is perfectly isolated.
 - Natural heading boundaries take priority over the approximate 300–700 word guidance.
-- Embeddings/storage (M31), runtime retrieval (M32), and structured DB/RAG context merge (M33) remain unimplemented.
+- M31 embeddings/storage is complete: `text-embedding-3-small`, 1536 dimensions, 104 stored rows, 96 embedded, and 8 TBD/excluded with null embeddings. Runtime retrieval (M32) and structured DB/RAG context merge (M33) remain unimplemented.
 - Tool execution, demo availability execution, document/location execution, and booking creation.
 - Real response planning/generation, Saleel style engine, few-shot selection, and verifier.
 - STT/TTS and voice intelligence; voice is unsupported after persistence.
